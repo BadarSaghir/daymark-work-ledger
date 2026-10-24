@@ -1,0 +1,49 @@
+.
+├── core
+│   ├── theme
+│   │   ├── app_colors.dart
+│   │   ├── app_theme.dart
+│   │   └── app_typography.dart
+│   ├── ui
+│   │   ├── brand_mark.dart
+│   │   ├── enum_ui.dart
+│   │   ├── feedback.dart
+│   │   ├── layout.dart
+│   │   ├── sheets.dart
+│   │   └── surface_card.dart
+│   └── utils
+│       ├── canonical_json.dart
+│       ├── date_keys.dart
+│       ├── durations.dart
+│       ├── ids.dart
+│       └── weightage.dart
+├── data
+│   ├── db
+│   │   ├── app_database.dart
+│   │   └── migrations.dart
+│   ├── models
+│   │   ├── activity_event.dart
+│   │   ├── app_settings.dart
+│   │   ├── category.dart
+│   │   ├── db_values.dart
+│   │   ├── enums.dart
+│   │   ├── journal_entry.dart
+│   │   ├── subtask.dart
+│   │   ├── task.dart
+│   │   ├── task_view.dart
+│   │   ├── time_entry.dart
+│   │   └── timer_session.dart
+│   ├── repositories
+│   │   ├── activity_repository.dart
+│   │   ├── category_repository.dart
+│   │   ├── journal_repository.dart
+│   │   ├── settings_repository.dart
+│   │   ├── task_repository.dart
+│   │   └── timer_repository.dart
+│   └── services
+│       ├── backup_service.dart
+│       └── demo_service.dart
+├── main.dart
+└── tree.txt
+
+10 directories, 37 files
