@@ -137,51 +137,72 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (eyebrow != null) ...[
-                Text(
-                  eyebrow!.toUpperCase(),
-                  style: Theme.of(context).textTheme.labelSmall
-                      ?.copyWith(color: colors.inkFaint),
-                ),
-                const SizedBox(height: AppSpace.sm),
-              ],
-              Text(
-                title,
-                style:
-                    (compact
-                            ? Theme.of(context).textTheme.headlineMedium
-                            : Theme.of(context).textTheme.displayMedium)
-                        ?.copyWith(height: 1.05),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: AppSpace.sm),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: AppBreakpoints.prose,
-                  ),
-                  child: Text(
-                    subtitle!,
-                    style: Theme.of(context).textTheme.bodyLarge
-                        ?.copyWith(color: colors.inkMuted),
-                  ),
-                ),
-              ],
-            ],
+        if (eyebrow != null) ...[
+          Text(
+            eyebrow!.toUpperCase(),
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: colors.inkFaint),
           ),
+          const SizedBox(height: AppSpace.sm),
+        ],
+        Text(
+          title,
+          style:
+              (compact
+                      ? Theme.of(context).textTheme.headlineMedium
+                      : Theme.of(context).textTheme.displayMedium)
+                  ?.copyWith(height: 1.05),
         ),
-        if (actions.isNotEmpty) ...[
-          const SizedBox(width: AppSpace.lg),
-          Wrap(spacing: AppSpace.sm, children: actions),
+        if (subtitle != null) ...[
+          const SizedBox(height: AppSpace.sm),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: AppBreakpoints.prose),
+            child: Text(
+              subtitle!,
+              style: Theme.of(context).textTheme.bodyLarge
+                  ?.copyWith(color: colors.inkMuted),
+            ),
+          ),
         ],
       ],
+    );
+
+    if (actions.isEmpty) return heading;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < AppBreakpoints.compact;
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              heading,
+              const SizedBox(height: AppSpace.lg),
+              Wrap(
+                spacing: AppSpace.sm,
+                runSpacing: AppSpace.sm,
+                children: actions,
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: heading),
+            const SizedBox(width: AppSpace.lg),
+            Wrap(
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
+              children: actions,
+            ),
+          ],
+        );
+      },
     );
   }
 }

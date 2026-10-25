@@ -182,7 +182,7 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
                   height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              else if (async.valueOrNull?.enabled == true && _pending != null)
+              else if (async.value?.enabled == true && _pending != null)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,

@@ -55,12 +55,12 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final timer = ref.watch(timerProvider).valueOrNull;
+    final timer = ref.watch(timerProvider).value;
     final session = timer?.session;
     final active = session != null;
     final today = startOfDay(DateTime.now());
-    final focusMs = ref.watch(dayFocusProvider(today)).valueOrNull ?? 0;
-    final views = ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[];
+    final focusMs = ref.watch(dayFocusProvider(today)).value ?? 0;
+    final views = ref.watch(tasksProvider).value ?? const <TaskView>[];
     final totalToday = _entries.fold<int>(
       0,
       (sum, item) => sum + item.durationMs,
@@ -419,11 +419,11 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
   }
 
   Future<void> _stopFlow() async {
-    final timer = ref.read(timerProvider).valueOrNull;
+    final timer = ref.read(timerProvider).value;
     final session = timer?.session;
     if (session == null || timer == null) return;
     final elapsed = timer.elapsed;
-    final views = ref.read(tasksProvider).valueOrNull ?? const <TaskView>[];
+    final views = ref.read(tasksProvider).value ?? const <TaskView>[];
     final request = await showAppSheet<_StopRequest>(
       context,
       (sheetContext) => _StopSheet(
@@ -1023,7 +1023,7 @@ class _ManualEntrySheetState extends ConsumerState<_ManualEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final views = ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[];
+    final views = ref.watch(tasksProvider).value ?? const <TaskView>[];
     final task = views.where((view) => view.task.id == _taskId).firstOrNull;
     return AppSheet(
       title: 'Log time by hand',

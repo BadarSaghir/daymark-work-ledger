@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_theme.dart';
 import '../core/ui/brand_mark.dart';
+import '../features/accounts/local_account_ui.dart';
 import '../features/onboarding/onboarding_page.dart';
+import '../state/local_account_controller.dart';
 import '../state/settings_controller.dart';
 import 'shell/app_shell.dart';
 
@@ -14,7 +16,9 @@ class DaymarkApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(settingsProvider);
-    final settings = settingsAsync.valueOrNull;
+    final settings = settingsAsync.value;
+    final local = ref.watch(localAccountProvider);
+    final signedOut = local != null && !local.signedIn;
     final mode = switch (settings?.themeMode) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -28,12 +32,14 @@ class DaymarkApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: mode,
       scrollBehavior: const _QuietScrollBehavior(),
-      home: settingsAsync.when(
-        loading: () => const _BootSplash(),
-        error: (error, stack) => _SettingsFailure(error: error),
-        data: (value) =>
-            value.onboarded ? const AppShell() : const OnboardingPage(),
-      ),
+      home: signedOut
+          ? const LocalAccountGate()
+          : settingsAsync.when(
+              loading: () => const _BootSplash(),
+              error: (error, stack) => _SettingsFailure(error: error),
+              data: (value) =>
+                  value.onboarded ? const AppShell() : const OnboardingPage(),
+            ),
     );
   }
 }

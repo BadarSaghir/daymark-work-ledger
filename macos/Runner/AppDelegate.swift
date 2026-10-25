@@ -4,7 +4,7 @@ import UserNotifications
 
 @main
 class AppDelegate: FlutterAppDelegate {
-  func applicationDidFinishLaunching(_ notification: Notification) {
+  override func applicationDidFinishLaunching(_ notification: Notification) {
     if #available(macOS 10.14, *) {
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }

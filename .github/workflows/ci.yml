@@ -31,6 +31,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional Google sign-in
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: dart run tool/configure_google_oauth.dart
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed lib test
       - name: Analyze
@@ -56,6 +61,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional Google sign-in
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: dart run tool/configure_google_oauth.dart
       - run: flutter build linux --release
       - name: Package portable bundle and Debian package
         run: |
@@ -120,6 +130,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional Google sign-in
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: dart run tool/configure_google_oauth.dart
       - run: flutter build windows --release
       - name: Package portable build
         shell: pwsh
@@ -157,6 +172,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional Google sign-in
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: dart run tool/configure_google_oauth.dart
       - name: Configure optional release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -213,6 +233,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional Google sign-in
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: dart run tool/configure_google_oauth.dart
       - name: Build without code signing
         run: flutter build ios --release --no-codesign
       - name: Package unsigned IPA
@@ -245,6 +270,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional Google sign-in
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: dart run tool/configure_google_oauth.dart
       - run: flutter build macos --release
       - name: Sign ad hoc, package ZIP and DMG
         run: |

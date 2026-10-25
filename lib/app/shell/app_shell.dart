@@ -11,6 +11,7 @@ import '../../core/ui/surface_card.dart';
 import '../../core/ui/layout.dart';
 import '../../features/calendar/calendar_page.dart';
 import '../../features/categories/categories_page.dart';
+import '../../features/accounts/local_account_ui.dart';
 import '../../features/insights/insights_page.dart';
 import '../../features/journal/journal_page.dart';
 import '../../features/nearby/nearby_page.dart';
@@ -21,6 +22,7 @@ import '../../data/models/task_view.dart';
 import '../../data/services/backup_service.dart';
 import '../../features/today/today_page.dart';
 import '../../state/backup_controller.dart';
+import '../../state/local_account_controller.dart';
 import '../../state/repository_providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/tasks_controller.dart';
@@ -65,7 +67,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _queueReminderSync() {
     if (!ref.read(remindersEnabledProvider)) return;
-    final preferences = ref.read(reminderControllerProvider).valueOrNull;
+    final preferences = ref.read(reminderControllerProvider).value;
     if (preferences?.enabled != true) return;
     _reminderDebounce?.cancel();
     _reminderDebounce = Timer(const Duration(seconds: 2), _syncReminders);
@@ -141,15 +143,13 @@ class _AppShellState extends ConsumerState<AppShell> {
     final expanded = width >= AppBreakpoints.expanded;
     final index = ref.watch(navIndexProvider);
     final paletteOpen = ref.watch(commandPaletteOpenProvider);
-    final settings = ref.watch(settingsProvider).valueOrNull;
-    final taskViews =
-        ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[];
+    final settings = ref.watch(settingsProvider).value;
+    final taskViews = ref.watch(tasksProvider).value ?? const <TaskView>[];
     final openToday = taskViews
         .forDate(DateTime.now())
         .where((view) => !view.isDone)
         .length;
-    final timerActive =
-        ref.watch(timerProvider).valueOrNull?.hasSession ?? false;
+    final timerActive = ref.watch(timerProvider).value?.hasSession ?? false;
 
     final pages = const [
       TodayPage(),
@@ -257,8 +257,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         final items = const [
           (NavTarget.calendar, Icons.calendar_month_outlined, 'Calendar'),
           (NavTarget.journal, Icons.edit_note_rounded, 'Journal'),
+          (NavTarget.insights, Icons.insights_rounded, 'Insights'),
           (NavTarget.categories, Icons.category_outlined, 'Categories'),
-          (NavTarget.nearby, Icons.wifi_tethering_rounded, 'Nearby'),
+          (NavTarget.nearby, Icons.sync_rounded, 'Nearby & sync'),
           (NavTarget.settings, Icons.settings_outlined, 'Settings'),
         ];
         return Padding(
@@ -367,6 +368,15 @@ class _Sidebar extends StatelessWidget {
             const SizedBox(height: AppSpace.sm),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+              child: OutlinedButton.icon(
+                onPressed: () => onGo(NavTarget.nearby),
+                icon: const Icon(Icons.sync_rounded, size: 17),
+                label: const Text('Sync nearby'),
+              ),
+            ),
+            const SizedBox(height: AppSpace.sm),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
               child: InkWell(
                 onTap: onPalette,
                 borderRadius: BorderRadius.circular(AppRadius.input),
@@ -468,8 +478,8 @@ class _Sidebar extends StatelessWidget {
                   const SizedBox(height: AppSpace.md),
                   _GroupLabel('TRANSFER'),
                   _SidebarItem(
-                    label: 'Nearby',
-                    icon: Icons.wifi_tethering_rounded,
+                    label: 'Nearby & sync',
+                    icon: Icons.sync_rounded,
                     selected: index == NavTarget.nearby,
                     onTap: () => onGo(NavTarget.nearby),
                   ),
@@ -623,8 +633,8 @@ class _Rail extends StatelessWidget {
               onTap: () => onGo(NavTarget.categories),
             ),
             _RailButton(
-              icon: Icons.wifi_tethering_rounded,
-              tooltip: 'Nearby',
+              icon: Icons.sync_rounded,
+              tooltip: 'Nearby & sync',
               selected: index == NavTarget.nearby,
               onTap: () => onGo(NavTarget.nearby),
             ),
@@ -870,10 +880,10 @@ class _BottomBar extends StatelessWidget {
                 onTap: () => onGo(NavTarget.focus),
               ),
               _BottomItem(
-                label: 'Insights',
-                icon: Icons.insights_rounded,
-                selected: index == NavTarget.insights,
-                onTap: () => onGo(NavTarget.insights),
+                label: 'Sync',
+                icon: Icons.sync_rounded,
+                selected: index == NavTarget.nearby,
+                onTap: () => onGo(NavTarget.nearby),
               ),
               _BottomItem(
                 label: 'More',
@@ -881,7 +891,7 @@ class _BottomBar extends StatelessWidget {
                 selected:
                     index >= NavTarget.calendar &&
                     index != NavTarget.focus &&
-                    index != NavTarget.insights,
+                    index != NavTarget.nearby,
                 onTap: onMore,
               ),
             ],

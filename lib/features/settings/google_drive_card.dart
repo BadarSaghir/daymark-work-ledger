@@ -243,6 +243,8 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final configAsync = ref.watch(googleDriveConfigProvider);
+    final managedSignIn =
+        ref.watch(googleOAuthDefaultsProvider).value?.configured ?? false;
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -320,6 +322,7 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
               if (!value.hasClient) {
                 return _SetupPrompt(
                   busy: _busy,
+                  managedSignIn: managedSignIn,
                   onSetup: () => _setupClient(value),
                   onOpenConsole: _openConsole,
                 );
@@ -330,10 +333,32 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
                   if (!value.hasAccount)
                     _ConnectPrompt(
                       busy: _busy,
+                      managedSignIn: managedSignIn,
                       onConnect: _connect,
                       onChangeClient: () => _setupClient(value),
                     )
                   else ...[
+                    if (value.lastUploadAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.cloud_done_outlined,
+                              size: 14,
+                              color: colors.green,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Last mirror ${dateLabel(value.lastUploadAt!)}',
+                              style: AppText.bodySmall.copyWith(
+                                color: colors.inkFaint,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     for (final account in value.accounts)
                       _AccountRow(
                         account: account,
@@ -366,10 +391,11 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
                           ),
                           label: const Text('Test connection'),
                         ),
-                        TextButton(
-                          onPressed: _busy ? null : () => _setupClient(value),
-                          child: const Text('OAuth client'),
-                        ),
+                        if (!managedSignIn)
+                          TextButton(
+                            onPressed: _busy ? null : () => _setupClient(value),
+                            child: const Text('OAuth client'),
+                          ),
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
@@ -504,11 +530,13 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
 class _SetupPrompt extends StatelessWidget {
   const _SetupPrompt({
     required this.busy,
+    required this.managedSignIn,
     required this.onSetup,
     required this.onOpenConsole,
   });
 
   final bool busy;
+  final bool managedSignIn;
   final VoidCallback onSetup;
   final VoidCallback onOpenConsole;
 
@@ -528,7 +556,9 @@ class _SetupPrompt extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Bring your own OAuth client',
+                managedSignIn
+                    ? 'Google sign-in needs a restart'
+                    : 'Google sign-in is not configured in this build',
                 style: AppText.bodySmall.copyWith(
                   color: colors.ink,
                   fontWeight: FontWeight.w700,
@@ -536,10 +566,13 @@ class _SetupPrompt extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Daymark cannot ship Google credentials. Create a free '
-                '“Desktop app” OAuth client in Google Cloud, enable the Drive '
-                'API, then paste the client ID and secret here. This takes '
-                'about three minutes.',
+                managedSignIn
+                    ? 'The OAuth client embedded in this build could not be '
+                          'loaded. Restart Daymark, then try again.'
+                    : 'Official Daymark releases use one-tap Google sign-in. '
+                          'This build was compiled without the OAuth client, so '
+                          'you can add your own free “Desktop app” client to '
+                          'connect Drive. It takes about three minutes.',
                 style: AppText.bodySmall.copyWith(
                   color: colors.inkMuted,
                   fontSize: 10.8,
@@ -574,46 +607,102 @@ class _SetupPrompt extends StatelessWidget {
 class _ConnectPrompt extends StatelessWidget {
   const _ConnectPrompt({
     required this.busy,
+    required this.managedSignIn,
     required this.onConnect,
     required this.onChangeClient,
   });
 
   final bool busy;
+  final bool managedSignIn;
   final VoidCallback onConnect;
   final VoidCallback onChangeClient;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'The OAuth client is ready. Connect the Google account whose Drive '
-          'should hold the mirror. You can add more than one and switch later.',
-          style: AppText.bodySmall.copyWith(
-            color: colors.inkMuted,
-            fontSize: 10.8,
-            height: 1.5,
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.lg),
+      decoration: BoxDecoration(
+        color: colors.primarySoft.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colors.line),
+                ),
+                child: Center(
+                  child: Text(
+                    'G',
+                    style: AppText.titleM.copyWith(
+                      color: colors.blue,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Back up like a message thread',
+                      style: AppText.titleM.copyWith(color: colors.ink),
+                    ),
+                    Text(
+                      'Sign in once. Daymark mirrors a fresh archive into a '
+                      'private Drive folder and keeps the latest copies.',
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.inkMuted,
+                        fontSize: 10.8,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: AppSpace.md),
-        Wrap(
-          spacing: AppSpace.sm,
-          runSpacing: AppSpace.sm,
-          children: [
-            FilledButton.icon(
-              onPressed: busy ? null : onConnect,
-              icon: const Icon(Icons.login_rounded, size: 17),
-              label: const Text('Connect Google account'),
+          const SizedBox(height: AppSpace.lg),
+          FilledButton.icon(
+            onPressed: busy ? null : onConnect,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
             ),
-            TextButton(
-              onPressed: busy ? null : onChangeClient,
-              child: const Text('Change client'),
+            icon: const Icon(Icons.login_rounded, size: 18),
+            label: const Text('Continue with Google'),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Google asks only for access to files Daymark creates. You can add '
+            'more than one account and switch later.',
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkFaint,
+              fontSize: 10,
+              height: 1.45,
             ),
-          ],
-        ),
-      ],
+          ),
+          if (!managedSignIn)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: busy ? null : onChangeClient,
+                child: const Text('Change OAuth client'),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

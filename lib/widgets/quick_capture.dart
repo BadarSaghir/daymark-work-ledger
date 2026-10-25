@@ -62,7 +62,7 @@ class _QuickCaptureState extends ConsumerState<QuickCapture> {
   void initState() {
     super.initState();
     if (widget.initialTitle.isNotEmpty) _title.text = widget.initialTitle;
-    final categories = ref.read(categoriesProvider).valueOrNull ?? const [];
+    final categories = ref.read(categoriesProvider).value ?? const [];
     if (categories.isNotEmpty) _categoryId = categories.first.id;
   }
 
@@ -115,7 +115,7 @@ class _QuickCaptureState extends ConsumerState<QuickCapture> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? const [];
+    final categories = ref.watch(categoriesProvider).value ?? const [];
 
     return AppSheet(
       title: 'Capture work',

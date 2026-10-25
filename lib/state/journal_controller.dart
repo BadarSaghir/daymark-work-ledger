@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../core/utils/date_keys.dart';
 import '../data/models/journal_entry.dart';
@@ -19,7 +20,7 @@ class JournalController extends AsyncNotifier<List<JournalEntry>> {
     final entry = await ref
         .read(journalRepositoryProvider)
         .save(dateKey: dateKey, bodyMd: bodyMd, mood: mood, energy: energy);
-    final current = [...(state.valueOrNull ?? const <JournalEntry>[])];
+    final current = [...(state.value ?? const <JournalEntry>[])];
     final index = current.indexWhere((item) => item.dateKey == dateKey);
     if (index >= 0) {
       current[index] = entry;
@@ -33,7 +34,7 @@ class JournalController extends AsyncNotifier<List<JournalEntry>> {
 
   Future<void> delete(String dateKey) async {
     await ref.read(journalRepositoryProvider).delete(dateKey);
-    final current = [...(state.valueOrNull ?? const <JournalEntry>[])]
+    final current = [...(state.value ?? const <JournalEntry>[])]
       ..removeWhere((entry) => entry.dateKey == dateKey);
     state = AsyncData(current);
   }
@@ -54,7 +55,7 @@ final journalForDateProvider = Provider.family<JournalEntry?, String>((
   ref,
   dateKey,
 ) {
-  final entries = ref.watch(journalProvider).valueOrNull ?? const [];
+  final entries = ref.watch(journalProvider).value ?? const [];
   for (final entry in entries) {
     if (entry.dateKey == dateKey) return entry;
   }
@@ -66,7 +67,7 @@ final journalSearchProvider = StateProvider<String>((ref) => '');
 /// Consecutive journaled days ending today (or yesterday, if today is still
 /// unwritten).
 final journalStreakProvider = Provider<int>((ref) {
-  final entries = ref.watch(journalProvider).valueOrNull ?? const [];
+  final entries = ref.watch(journalProvider).value ?? const [];
   final filled = <String>{
     for (final entry in entries)
       if (entry.bodyMd.trim().isNotEmpty) entry.dateKey,

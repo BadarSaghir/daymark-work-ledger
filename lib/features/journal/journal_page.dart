@@ -123,7 +123,7 @@ class _JournalPageState extends ConsumerState<JournalPage> {
     final selected = ref.watch(selectedDateProvider);
     final key = dateKey(selected);
     final entriesAsync = ref.watch(journalProvider);
-    final entries = entriesAsync.valueOrNull;
+    final entries = entriesAsync.value;
     final entry = ref.watch(journalForDateProvider(key));
     final streak = ref.watch(journalStreakProvider);
     final query = ref.watch(journalSearchProvider);

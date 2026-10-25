@@ -143,7 +143,7 @@ Future<bool> showStartFocusDialog(
   if (started != true) return false;
 
   if (!context.mounted) return false;
-  final existing = ref.read(timerProvider).valueOrNull?.session;
+  final existing = ref.read(timerProvider).value?.session;
   if (existing != null) {
     final confirmed = await showConfirmDialog(
       context,
@@ -197,7 +197,7 @@ class _TaskPickerSheetState extends ConsumerState<_TaskPickerSheet> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final tasks =
-        (ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[])
+        (ref.watch(tasksProvider).value ?? const <TaskView>[])
             .where((view) => !view.task.archived)
             .where(
               (view) =>

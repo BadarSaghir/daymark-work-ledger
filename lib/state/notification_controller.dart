@@ -22,13 +22,13 @@ class ReminderController extends AsyncNotifier<ReminderPreferences> {
     final service = await _service();
     final granted = await service.requestPermission();
     if (!granted) return false;
-    final current = state.valueOrNull ?? ReminderPreferences.defaults;
+    final current = state.value ?? ReminderPreferences.defaults;
     await _persist(current.copyWith(enabled: true));
     return true;
   }
 
   Future<void> disable() async {
-    final current = state.valueOrNull ?? ReminderPreferences.defaults;
+    final current = state.value ?? ReminderPreferences.defaults;
     await _persist(current.copyWith(enabled: false));
     await (await _service()).cancelAll();
   }
@@ -48,7 +48,7 @@ class ReminderController extends AsyncNotifier<ReminderPreferences> {
   /// or zero when reminders are off. Failures in individual notifications are
   /// ignored by the service; a missing platform returns zero.
   Future<int> syncNow() async {
-    final preferences = state.valueOrNull;
+    final preferences = state.value;
     final service = await _service();
     if (preferences == null) {
       return 0;

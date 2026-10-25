@@ -24,14 +24,14 @@ class CalendarPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(selectedDateProvider);
     final weekMode = ref.watch(calendarWeekModeProvider);
-    final views = ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[];
-    final settings = ref.watch(settingsProvider).valueOrNull;
+    final views = ref.watch(tasksProvider).value ?? const <TaskView>[];
+    final settings = ref.watch(settingsProvider).value;
     final mondayFirst = settings?.weekStartsMonday ?? true;
     final month = DateTime(selected.year, selected.month);
     final focusAsync = ref.watch(monthFocusProvider(month));
-    final focusByDay = focusAsync.valueOrNull ?? const <String, int>{};
+    final focusByDay = focusAsync.value ?? const <String, int>{};
     final dayTasks = views.forDate(selected).toList();
-    final dayFocus = ref.watch(dayFocusProvider(selected)).valueOrNull ?? 0;
+    final dayFocus = ref.watch(dayFocusProvider(selected)).value ?? 0;
     final monthTotal = focusByDay.values.fold<int>(0, (a, b) => a + b);
     final activeDays = focusByDay.values.where((ms) => ms > 0).length;
 

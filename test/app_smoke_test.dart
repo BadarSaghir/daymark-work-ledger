@@ -71,12 +71,23 @@ void main() {
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 
+  testWidgets('phone bottom bar opens Nearby without overflow', (tester) async {
+    await pumpApp(tester, const Size(390, 844));
+
+    await tester.tap(find.text('Sync'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nearby'), findsWidgets);
+    expect(find.text('Go online'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('desktop shell opens with a persistent sidebar', (tester) async {
     await pumpApp(tester, const Size(1440, 900));
 
     expect(find.text('Planner'), findsWidgets);
     expect(find.text('Insights'), findsWidgets);
-    expect(find.text('Nearby'), findsWidgets);
+    expect(find.text('Nearby & sync'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

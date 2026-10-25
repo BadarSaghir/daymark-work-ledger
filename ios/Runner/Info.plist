@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Daymark uses your local network to move a ledger snapshot, note, or file between your own devices. Nothing is sent to the internet.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Daymark uses the camera only to scan a pairing QR code from another one of your devices.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

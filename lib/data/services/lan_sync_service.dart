@@ -54,6 +54,160 @@ class LanPeer {
   }
 }
 
+/// A durable, human-readable audit trail of transfers. It intentionally
+/// outlives the inbox so a restored, journaled, or discarded item still has a
+/// record of where it came from.
+class LanHistoryEntry {
+  const LanHistoryEntry({
+    required this.id,
+    required this.direction,
+    required this.kind,
+    required this.title,
+    required this.peerName,
+    required this.createdAt,
+    required this.status,
+    this.itemId,
+    this.sizeBytes = 0,
+  });
+
+  final String id;
+
+  /// `sent` or `received`.
+  final String direction;
+
+  /// `snapshot`, `text`, or `file`.
+  final String kind;
+  final String title;
+  final String peerName;
+  final DateTime createdAt;
+  final String status;
+  final String? itemId;
+  final int sizeBytes;
+
+  bool get isSent => direction == 'sent';
+  bool get isReceived => direction == 'received';
+
+  String get sizeLabel {
+    if (sizeBytes <= 0) return '';
+    final mb = sizeBytes / (1024 * 1024);
+    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
+    return '${(sizeBytes / 1024).ceil()} KB';
+  }
+
+  LanHistoryEntry copyWith({String? status}) => LanHistoryEntry(
+    id: id,
+    direction: direction,
+    kind: kind,
+    title: title,
+    peerName: peerName,
+    createdAt: createdAt,
+    status: status ?? this.status,
+    itemId: itemId,
+    sizeBytes: sizeBytes,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'direction': direction,
+    'kind': kind,
+    'title': title,
+    'peer': peerName,
+    'createdAt': createdAt.toUtc().millisecondsSinceEpoch,
+    'status': status,
+    'itemId': itemId,
+    'sizeBytes': sizeBytes,
+  };
+
+  static LanHistoryEntry? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final id = raw['id']?.toString();
+    final direction = raw['direction']?.toString();
+    final kind = raw['kind']?.toString();
+    final title = raw['title']?.toString();
+    final peer = raw['peer']?.toString();
+    if (id == null ||
+        direction == null ||
+        kind == null ||
+        title == null ||
+        peer == null) {
+      return null;
+    }
+    return LanHistoryEntry(
+      id: id,
+      direction: direction,
+      kind: kind,
+      title: title,
+      peerName: peer,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        (raw['createdAt'] as num?)?.toInt() ?? 0,
+        isUtc: true,
+      ).toLocal(),
+      status: raw['status']?.toString() ?? 'received',
+      itemId: raw['itemId']?.toString(),
+      sizeBytes: (raw['sizeBytes'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// The payload carried by a pairing QR code. It contains the same short-lived
+/// code shown on the receiving screen; anyone who can see the screen can use
+/// it. Nothing is persisted and the code changes whenever Nearby starts.
+class LanPairing {
+  const LanPairing({
+    required this.host,
+    required this.port,
+    required this.pin,
+    required this.name,
+    required this.deviceId,
+  });
+
+  final String host;
+  final int port;
+  final String pin;
+  final String name;
+  final String deviceId;
+
+  String encode() => Uri(
+    scheme: 'daymark',
+    host: 'pair',
+    queryParameters: {
+      'host': host,
+      'port': '$port',
+      'pin': pin,
+      'name': name,
+      if (deviceId.isNotEmpty) 'id': deviceId,
+    },
+  ).toString();
+
+  static LanPairing? parse(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme != 'daymark' || uri.host != 'pair') {
+      return null;
+    }
+    final host = uri.queryParameters['host']?.trim() ?? '';
+    final port = int.tryParse(uri.queryParameters['port']?.trim() ?? '');
+    final pin = uri.queryParameters['pin']?.trim() ?? '';
+    if (host.isEmpty ||
+        port == null ||
+        port < 1 ||
+        port > 65535 ||
+        !RegExp(r'^\d{6}$').hasMatch(pin)) {
+      return null;
+    }
+    return LanPairing(
+      host: host,
+      port: port,
+      pin: pin,
+      name: uri.queryParameters['name']?.trim().isNotEmpty == true
+          ? uri.queryParameters['name']!.trim()
+          : 'Daymark device',
+      deviceId: uri.queryParameters['id']?.trim() ?? '',
+    );
+  }
+}
+
 class LanInboxItem {
   const LanInboxItem({
     required this.id,
@@ -156,8 +310,11 @@ class LanSyncService {
 
   final Map<String, LanPeer> _peers = {};
   List<LanInboxItem> _items = const [];
+  List<LanHistoryEntry> _history = const [];
   final _peerController = StreamController<List<LanPeer>>.broadcast();
   final _inboxController = StreamController<List<LanInboxItem>>.broadcast();
+  final _historyController =
+      StreamController<List<LanHistoryEntry>>.broadcast();
 
   bool get isStarted => _started;
   bool get isReceiving => _receiving;
@@ -169,8 +326,10 @@ class LanSyncService {
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())),
   );
   List<LanInboxItem> get inbox => List.unmodifiable(_items);
+  List<LanHistoryEntry> get history => List.unmodifiable(_history);
   Stream<List<LanPeer>> get peersStream => _peerController.stream;
   Stream<List<LanInboxItem>> get inboxStream => _inboxController.stream;
+  Stream<List<LanHistoryEntry>> get historyStream => _historyController.stream;
 
   String get displayName {
     final clean = deviceName.trim();
@@ -183,6 +342,7 @@ class LanSyncService {
     _deviceId = await _loadDeviceId();
     _pin = Random.secure().nextInt(1000000).toString().padLeft(6, '0');
     await _loadInbox();
+    await _loadHistory();
 
     _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     _server!.listen((request) {
@@ -246,12 +406,32 @@ class LanSyncService {
     if (!_inboxController.isClosed) {
       _inboxController.add(List.unmodifiable(_items));
     }
+    if (!_historyController.isClosed) {
+      _historyController.add(List.unmodifiable(_history));
+    }
     await _peerController.close();
     await _inboxController.close();
+    await _historyController.close();
   }
 
   void setReceiving(bool value) {
     _receiving = value;
+  }
+
+  /// Builds a shareable pairing payload for the current session. Returns null
+  /// when no non-loopback IPv4 address is available.
+  Future<LanPairing?> pairingInfo() async {
+    final serverPort = port;
+    if (!_started || serverPort == null) return null;
+    final host = await _localAddress();
+    if (host == null) return null;
+    return LanPairing(
+      host: host,
+      port: serverPort,
+      pin: _pin,
+      name: displayName,
+      deviceId: deviceId,
+    );
   }
 
   Future<LanPeer?> probe(String host, int port) async {
@@ -299,6 +479,21 @@ class LanSyncService {
       bytes,
       contentType: 'application/zip',
     );
+    await _recordHistory(
+      direction: 'sent',
+      kind: 'snapshot',
+      title: 'Ledger snapshot',
+      peerName: peer.name,
+      sizeBytes: bytes.length,
+      status: 'sent',
+    );
+  }
+
+  /// Exchanges the latest ledger in both directions. Each snapshot waits in
+  /// the other device's inbox, so syncing never silently replaces data.
+  Future<LanInboxItem> syncWithPeer(LanPeer peer, String pin) async {
+    await sendSnapshot(peer, pin);
+    return pullSnapshot(peer, pin);
   }
 
   Future<LanInboxItem> pullSnapshot(LanPeer peer, String pin) async {
@@ -333,6 +528,14 @@ class LanSyncService {
       Uint8List.fromList(utf8.encode(body)),
       contentType: 'application/json; charset=utf-8',
     );
+    await _recordHistory(
+      direction: 'sent',
+      kind: 'text',
+      title: cleanTitle,
+      peerName: peer.name,
+      sizeBytes: utf8.encode(text).length,
+      status: 'sent',
+    );
   }
 
   Future<void> sendFile(LanPeer peer, String pin, File file) async {
@@ -349,6 +552,37 @@ class LanSyncService {
       contentType: 'application/octet-stream',
       extraQuery: {'name': p.basename(file.path), 'from': displayName},
     );
+    await _recordHistory(
+      direction: 'sent',
+      kind: 'file',
+      title: p.basename(file.path),
+      peerName: peer.name,
+      sizeBytes: bytes.length,
+      status: 'sent',
+    );
+  }
+
+  Future<void> markHistoryForItem(String itemId, String status) async {
+    var changed = false;
+    _history = [
+      for (final entry in _history)
+        if (entry.itemId == itemId && entry.status != status)
+          () {
+            changed = true;
+            return entry.copyWith(status: status);
+          }()
+        else
+          entry,
+    ];
+    if (!changed) return;
+    await _saveHistory();
+    _emitHistory();
+  }
+
+  Future<void> clearHistory() async {
+    _history = const [];
+    await _saveHistory();
+    _emitHistory();
   }
 
   Future<void> deleteInboxItem(LanInboxItem item) async {
@@ -365,6 +599,7 @@ class LanSyncService {
         if (existing.id != item.id) existing,
     ];
     await _saveInbox();
+    await markHistoryForItem(item.id, 'removed');
     _emitInbox();
   }
 
@@ -403,7 +638,7 @@ class LanSyncService {
         'platform': Platform.operatingSystem,
         'port': port,
         'pinRequired': true,
-        'version': '1.0.0',
+        'version': '1.2.0',
       });
       return;
     }
@@ -737,6 +972,15 @@ class LanSyncService {
     _items = [item, ..._items];
     await _saveInbox();
     _emitInbox();
+    await _recordHistory(
+      direction: 'received',
+      kind: item.kind,
+      title: item.title,
+      peerName: item.fromName,
+      sizeBytes: item.sizeBytes,
+      itemId: item.id,
+      status: 'received',
+    );
   }
 
   Future<void> _saveInbox() async {
@@ -752,6 +996,97 @@ class LanSyncService {
   }
 
   File get _indexFile => File(p.join(directory.path, 'inbox.json'));
+
+  File get _historyFile => File(p.join(directory.path, 'history.json'));
+
+  Future<void> _recordHistory({
+    required String direction,
+    required String kind,
+    required String title,
+    required String peerName,
+    required String status,
+    int sizeBytes = 0,
+    String? itemId,
+  }) async {
+    final entry = LanHistoryEntry(
+      id: const Uuid().v4(),
+      direction: direction,
+      kind: kind,
+      title: title,
+      peerName: peerName,
+      createdAt: DateTime.now(),
+      status: status,
+      itemId: itemId,
+      sizeBytes: sizeBytes,
+    );
+    _history = [entry, ..._history].take(500).toList();
+    await _saveHistory();
+    _emitHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final file = _historyFile;
+    if (!await file.exists()) {
+      _history = const [];
+      return;
+    }
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is List) {
+        _history = [for (final raw in decoded) ?LanHistoryEntry.fromJson(raw)];
+      }
+    } catch (_) {
+      _history = const [];
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    await directory.create(recursive: true);
+    final file = _historyFile;
+    final temp = File('${file.path}.tmp');
+    await temp.writeAsString(
+      jsonEncode([for (final entry in _history) entry.toJson()]),
+      flush: true,
+    );
+    if (await file.exists()) await file.delete();
+    await temp.rename(file.path);
+  }
+
+  void _emitHistory() {
+    if (!_historyController.isClosed) {
+      _historyController.add(List.unmodifiable(_history));
+    }
+  }
+
+  Future<String?> _localAddress() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+        includeLinkLocal: false,
+      );
+      final candidates = <(int, String)>[];
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          final raw = address.address;
+          if (!_isPrivateAddress(address)) continue;
+          if (raw.startsWith('169.254.')) continue;
+          final priority = raw.startsWith('192.168.')
+              ? 3
+              : raw.startsWith('10.')
+              ? 2
+              : raw.startsWith('172.')
+              ? 1
+              : 0;
+          candidates.add((priority, raw));
+        }
+      }
+      candidates.sort((a, b) => b.$1.compareTo(a.$1));
+      return candidates.isEmpty ? null : candidates.first.$2;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<File> _snapshotFile(String prefix, String from) async {
     await backupService.backupDirectory.create(recursive: true);

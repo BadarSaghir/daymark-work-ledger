@@ -72,7 +72,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
     _blocked = TextEditingController(text: task?.blockedReason ?? '');
     _categoryId = task?.categoryId;
     if (task == null) {
-      final categories = ref.read(categoriesProvider).valueOrNull ?? const [];
+      final categories = ref.read(categoriesProvider).value ?? const [];
       if (categories.isNotEmpty) _categoryId = categories.first.id;
     }
     _kind = task?.kind ?? WorkKind.official;
@@ -247,7 +247,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? const [];
+    final categories = ref.watch(categoriesProvider).value ?? const [];
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= 760;
 

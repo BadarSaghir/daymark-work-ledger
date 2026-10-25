@@ -28,10 +28,10 @@ class InsightsPage extends ConsumerWidget {
     final period = ref.watch(analyticsPeriodProvider);
     final analyticsAsync = ref.watch(analyticsProvider);
     final heatAsync = ref.watch(heatmapFocusProvider);
-    final categories = ref.watch(categoriesProvider).valueOrNull ?? const [];
-    final settings = ref.watch(settingsProvider).valueOrNull;
-    final data = analyticsAsync.valueOrNull;
-    final heat = heatAsync.valueOrNull ?? const <String, int>{};
+    final categories = ref.watch(categoriesProvider).value ?? const [];
+    final settings = ref.watch(settingsProvider).value;
+    final data = analyticsAsync.value;
+    final heat = heatAsync.value ?? const <String, int>{};
     final categoryById = {for (final c in categories) c.id: c};
     final wide = MediaQuery.sizeOf(context).width >= 1050;
 

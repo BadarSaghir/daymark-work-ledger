@@ -23,8 +23,8 @@ Most tools ask you to choose between a rigid project manager and a blank notes a
 - **Measure honestly.** One live timer, paused segments preserved, and time entries that survive a crash.
 - **Remember the shape of the week.** The calendar and insights show where attention actually went, not only what was completed.
 - **Stay portable.** Backups are ZIP archives with JSON data, a checksum, a manifest, and markdown mirrors. Restore without the original device.
-- **Choose your second copy.** Mirror backups into your own Google Drive folder with a user-supplied OAuth client, or skip the cloud entirely.
-- **Move between your own devices.** Nearby sends a ledger snapshot, a note, or any file directly over the LAN. No relay, no cloud copy.
+- **Choose your second copy.** Mirror backups into your own Google Drive folder with one-tap Google sign-in in official builds, or use your own OAuth client when self-hosting.
+- **Move between your own devices.** Nearby syncs ledgers, notes, and files directly over the LAN with QR pairing. No relay, no cloud copy.
 - **Remember without a server.** Task starts, deadlines, and a daily closing note are scheduled as offline OS notifications.
 
 ## Features
@@ -40,9 +40,9 @@ Most tools ask you to choose between a rigid project manager and a blank notes a
 | **Insights** | Trends, focus totals, estimate accuracy, a 12-week focus heatmap, and category distribution. |
 | **Categories** | Colour, icon, weight (0.5–2.0), archive, and safe deletion. |
 | **Backups** | Manual or daily automatic backups, retention, import validation, pre-restore safety copies, and portable markdown mirrors. |
-| **Google Drive** | Optional mirror to a user-owned Drive folder, multiple Google accounts, active-account switching, retention, cloud restore, and automatic uploads at most every 20 hours. |
+| **Google Drive** | One-tap **Continue with Google** in builds with embedded OAuth credentials, or guided self-hosted setup. Mirrors to a user-owned Drive folder with multiple accounts, retention, cloud restore, and automatic uploads at most every 20 hours. |
 | **Reminders** | Offline OS notifications for task starts, deadlines, and a daily review, with configurable lead time and review time. |
-| **Nearby** | LAN discovery, six-digit transfer codes, snapshot push/pull, note and file transfer, and a local inbox with explicit restore. |
+| **Nearby** | LAN discovery, QR pairing, a one-tap **Sync now** button, separate Sync / Send / Inbox / History tabs, six-digit transfer codes, note and file transfer, and a persistent share log. |
 | **Branding** | Adaptive Android icon with themed monochrome layer, iOS/macOS/Windows launcher icons, Linux desktop entry, and a notification icon. |
 | **Interface** | Warm paper palette, deep green and persimmon accents, adaptive sidebar / rail / bottom navigation, command palette, and compact layouts down to phone width. |
 
@@ -63,31 +63,65 @@ points = effort (1–5)
 
 The day target is a capacity signal, not a productivity score.
 
-## Nearby: LAN transfer without a cloud
+## Nearby: sync, send, and track without a cloud
 
-1. Open **Nearby** on two devices on the same network.
-2. Choose **Go online** on both.
-3. Read the six-digit code on the receiving device and type it on the sender.
-4. Send a full ledger snapshot, pull the other ledger, or send a markdown note or file.
+1. Open **Nearby** on two devices on the same network and choose **Go online** on both.
+2. On either device open the **Sync** tab and choose **Show pairing QR**.
+3. On the other device choose **Scan QR**. Desktop builds can paste the pairing link or use **Manual address** instead.
+4. Choose **Sync now**. Daymark sends this ledger and pulls the other device's copy into the Inbox in one step.
 
-A received snapshot waits in the inbox until you explicitly restore it. Restoring writes a pre-restore safety copy first. Files and notes have their own actions: copy, share through the system sheet, save to the journal, or turn into a task.
+Pairing remembers the rotating six-digit code for the session, so later sends do not ask again. The Nearby page is split into four tabs:
 
-**Security model:** traffic is direct device-to-device and is **not encrypted**. The six-digit code guards each transfer and rotates whenever Nearby starts. Only private, loopback, and link-local addresses are accepted. Use Nearby on a network you trust. There is no internet relay, account, or cloud copy.
+- **Sync** — pairing QR, scan/paste/manual address, and one-tap two-way sync.
+- **Send** — send a markdown note, a file up to 100 MB, or the full ledger; or pull the other ledger.
+- **Inbox** — received notes, files, and snapshots with explicit actions. A snapshot waits here until you confirm a restore, and the restore writes a pre-restore safety copy first.
+- **History** — a durable 500-entry log of what was sent, received, restored, journaled, or removed, with direction filters.
 
-If UDP discovery is blocked by the network, use **Manual** with the address and port shown on the other device.
+**Security model:** traffic is direct device-to-device and is **not encrypted**. The six-digit code guards each transfer and rotates whenever Nearby starts. The pairing QR contains that code, so show it only to your own device. Only private, loopback, and link-local addresses are accepted. Use Nearby on a network you trust. There is no internet relay, account, or cloud copy.
+
+If UDP discovery is blocked, use **Manual address** with the host and port shown on the other device.
+
+### Nearby permissions
+
+| Platform | What to allow | Why |
+| --- | --- | --- |
+| Android 13+ | **Nearby devices** (`NEARBY_WIFI_DEVICES`) | Local network discovery and transfers. |
+| Android 17+ | **Local network access** (`ACCESS_LOCAL_NETWORK`) | Android 17 gates local-network sockets behind this runtime permission. |
+| Android / iOS / macOS | **Camera** | QR pairing only; the scanner stops when the dialog closes. |
+| iOS | **Local Network** | Incoming LAN connections. The app explains this in the system prompt. |
+| Windows | **Private networks** in Windows Firewall | Discovery and the local transfer server. |
+| macOS | Incoming connections and Camera | The sandbox entitlement is included in release builds. |
+
+If discovery stays empty after allowing access, use **Manual address** or check that both devices are on the same Wi-Fi network and that client isolation is disabled.
 
 ## Optional Google Drive mirror
 
-Daymark does not ship Google credentials and does not run a cloud account. To
-use Drive:
+Daymark runs no backend and no shared cloud account. Google Drive is optional and
+your ledger still works completely offline without it.
+
+### One-tap sign-in in official builds
+
+Official builds embed a Google **Desktop app** OAuth client supplied at build
+time through the `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`
+GitHub Actions secrets. The card then shows **Continue with Google**:
+
+1. Choose **Continue with Google**.
+2. Approve the narrow Drive permission in the browser.
+3. Daymark creates a private **Daymark Backups** folder and begins mirroring.
+4. Add more Google accounts later and choose which one is active.
+
+The OAuth callback uses a one-shot loopback listener and PKCE. A build without
+embedded credentials stays fully functional and shows guided setup instead.
+
+### Self-hosted setup
 
 1. Open **Settings → Google Drive → Set up Google Drive**.
 2. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
    enable the **Google Drive API**, then create an OAuth client of type
    **Desktop app**.
 3. Paste the client ID and secret into Daymark. They are stored locally in
-   `config/google_drive.json` with owner-only permissions on Unix.
-4. Connect one or more Google accounts. Choose the active account for uploads.
+   `cloud/google_drive.json` with owner-only permissions on Unix.
+4. Connect one or more Google accounts and choose the active account.
 5. Use **Back up to Drive**, enable automatic mirroring, or restore a cloud
    archive directly.
 
@@ -98,8 +132,8 @@ that should see the same Drive folder.
 
 The loopback sign-in flow is designed for desktop. On Android and iOS it also
 uses the device browser against `127.0.0.1`; if a platform or Google policy
-blocks that redirect, use the Google Drive backup from desktop or sign in with a
-client type supported by that platform.
+blocks that redirect, use Drive backup from desktop. Google's OAuth policy and
+verification requirements are outside Daymark's control.
 
 ## Offline reminders
 
@@ -139,7 +173,7 @@ Imports are validated before a single row is replaced. Invalid checksums, unsupp
 
 - Flutter **3.47.8** (stable) and Dart 3.13+
 - Linux desktop: `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`
-- Android: Android SDK with API 35+, Java 17
+- Android: Android SDK with API 37, Java 17
 - Xcode for iOS/macOS builds
 
 > Do **not** install Flutter with snap for this project. Use the official Flutter archive or a version manager so the desktop toolchain can find the SDK without confinement issues.
@@ -198,7 +232,7 @@ make test                   # flutter test
 make check                  # format check + analyze + tests
 ```
 
-The test suite covers the weight formula, date and duration helpers, backup checksums and restore safety, Google Drive config and multi-account serialization, reminder preference parsing, compact and desktop shell layouts, and overflow regressions. Widget tests use `databaseFactoryFfiNoIsolate` and seed a temporary database outside the widget fake-async zone.
+The test suite covers the weight formula, date and duration helpers, backup checksums and restore safety, Google Drive config and built-in OAuth parsing, LAN pairing and history serialization, reminder preference parsing, compact and desktop shell layouts, and overflow regressions. Widget tests use `databaseFactoryFfiNoIsolate` and seed a temporary database outside the widget fake-async zone.
 
 ## Project structure
 
@@ -227,16 +261,16 @@ test/                       Unit and widget tests
 - Local database: `getApplicationSupportDirectory()/data/daymark.db`
 - Backups: `getApplicationSupportDirectory()/backups/`
 - Pre-migration snapshots: `getApplicationSupportDirectory()/pre_migration/`
-- Nearby inbox: `getApplicationSupportDirectory()/nearby/`
-- Google OAuth client and refresh tokens: `getApplicationSupportDirectory()/config/google_drive.json`
+- Nearby inbox and transfer history: `getApplicationSupportDirectory()/nearby/`
+- Google OAuth client and refresh tokens: `getApplicationSupportDirectory()/cloud/google_drive.json`
 - Reminder preferences: `getApplicationSupportDirectory()/config/notifications.json`
 
 The app contains no analytics, ads, crash reporting, or telemetry. Network
 activity is limited to:
 
 - Nearby, and only while you open it and choose **Go online**;
-- Google Drive, and only after you configure your own OAuth client and connect
-  an account.
+- Google Drive, and only after you choose **Continue with Google** or configure
+  your own OAuth client and connect an account.
 
 Everything else works offline. The Google Drive config file is separate from
 the database and backups so a restored ledger cannot leak or overwrite tokens.
@@ -254,9 +288,10 @@ The **Build & Release** workflow runs on every push and pull request:
 - on `v*` tags, a GitHub Release with all artifacts and `SHA256SUMS.txt`.
 
 No release is published unless every platform build and the quality gate pass.
-Android production signing and Apple signing are optional and driven by GitHub
-Actions secrets; see [`docs/RELEASING.md`](docs/RELEASING.md) for the exact
-secrets, signing commands, macOS notarization notes, and rollback procedure.
+Google sign-in credentials, Android production signing, and Apple signing are
+optional and driven by GitHub Actions secrets; see
+[`docs/RELEASING.md`](docs/RELEASING.md) for the exact secrets, signing
+commands, macOS notarization notes, and rollback procedure.
 
 See [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 

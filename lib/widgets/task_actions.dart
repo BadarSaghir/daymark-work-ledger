@@ -60,7 +60,7 @@ Future<void> toggleTaskTimer(
   WidgetRef ref,
   TaskView view,
 ) async {
-  final current = ref.read(timerProvider).valueOrNull;
+  final current = ref.read(timerProvider).value;
   final session = current?.session;
   final notifier = ref.read(timerProvider.notifier);
 
@@ -112,7 +112,7 @@ Future<bool> confirmStopTimer(
   String? label,
   String? note,
 }) async {
-  final current = ref.read(timerProvider).valueOrNull;
+  final current = ref.read(timerProvider).value;
   if (current?.session == null) return false;
   final confirmed = await showConfirmDialog(
     context,

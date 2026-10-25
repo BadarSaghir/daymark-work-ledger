@@ -124,10 +124,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final views = ref.watch(tasksProvider);
-    var view = views.valueOrNull
+    var view = views.value
         ?.where((item) => item.task.id == widget.taskId)
         .firstOrNull;
-    final timer = ref.watch(timerProvider).valueOrNull;
+    final timer = ref.watch(timerProvider).value;
     final session = timer?.session;
     final active = session?.taskId == widget.taskId;
     final liveMs = active ? timer!.elapsed.inMilliseconds : 0;
@@ -812,7 +812,7 @@ class _DetailRail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
-    final timer = ref.watch(timerProvider).valueOrNull;
+    final timer = ref.watch(timerProvider).value;
     final elapsed = timerActive ? timer!.elapsed : Duration.zero;
     final totalMs = view.trackedMs + liveMs;
     final activeRunning = timerActive && (timer?.isRunning ?? false);

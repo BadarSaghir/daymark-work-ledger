@@ -5,7 +5,10 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path/path.dart' as p;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -40,18 +43,31 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
   LanSyncService? _service;
   StreamSubscription<List<LanPeer>>? _peerSub;
   StreamSubscription<List<LanInboxItem>>? _inboxSub;
+  StreamSubscription<List<LanHistoryEntry>>? _historySub;
   List<LanPeer> _peers = const [];
   List<LanInboxItem> _inbox = const [];
+  List<LanHistoryEntry> _history = const [];
   final _knownInbox = <String>{};
   bool _starting = false;
   bool _busy = false;
   String? _busyLabel;
   String? _error;
+  String? _pairedPeerId;
+  String? _pairedPin;
+  int _tab = 0;
+
+  LanPeer? get _pairedPeer {
+    for (final peer in _peers) {
+      if (peer.id == _pairedPeerId) return peer;
+    }
+    return null;
+  }
 
   @override
   void dispose() {
     _peerSub?.cancel();
     _inboxSub?.cancel();
+    _historySub?.cancel();
     unawaited(_service?.stop());
     super.dispose();
   }
@@ -62,6 +78,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
       _starting = true;
       _error = null;
     });
+    await _requestNetworkPermission();
     try {
       final settings = await ref.read(settingsProvider.future);
       final backup = await ref.read(backupServiceProvider.future);
@@ -100,10 +117,14 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
           );
         }
       });
+      _historySub = service.historyStream.listen((history) {
+        if (mounted) setState(() => _history = history);
+      });
       setState(() {
         _service = service;
         _peers = service.peers;
         _inbox = service.inbox;
+        _history = service.history;
         _starting = false;
         _error = service.discoveryError;
       });
@@ -117,17 +138,52 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
     }
   }
 
+  Future<void> _requestNetworkPermission() async {
+    if (!Platform.isAndroid) return;
+    final sdk = _androidSdkVersion;
+    try {
+      if (sdk == null || sdk >= 33) {
+        await Permission.nearbyWifiDevices.request();
+      }
+      if (sdk == null || sdk >= 37) {
+        final local = await Permission.accessLocalNetwork.request();
+        if (!local.isGranted && mounted) {
+          showToast(
+            context,
+            'Local network access is off. Allow Nearby devices for Daymark in '
+            'system settings if discovery cannot find your other device.',
+            duration: const Duration(seconds: 5),
+          );
+        }
+      }
+    } catch (_) {
+      // Older Android releases do not expose these runtime permissions.
+    }
+  }
+
+  int? get _androidSdkVersion {
+    final match = RegExp(r'SDK (\d+)')
+        .firstMatch(Platform.operatingSystemVersion);
+    return int.tryParse(match?.group(1) ?? '');
+  }
+
   Future<void> _stop() async {
     final service = _service;
     await _peerSub?.cancel();
     await _inboxSub?.cancel();
+    await _historySub?.cancel();
     _peerSub = null;
     _inboxSub = null;
+    _historySub = null;
     if (mounted) {
       setState(() {
         _service = null;
         _peers = const [];
         _inbox = const [];
+        _history = const [];
+        _pairedPeerId = null;
+        _pairedPin = null;
+        _tab = 0;
       });
     }
     await service?.stop();
@@ -153,37 +209,57 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
     }
   }
 
+  Future<String?> _pinFor(LanPeer peer) async {
+    if (_pairedPeerId == peer.id && _pairedPin != null) return _pairedPin;
+    return _askPin(context, peer, action: 'Connect');
+  }
+
+  Future<void> _rememberPair(LanPeer peer, String pin) async {
+    if (_pairedPeerId == peer.id && _pairedPin == pin) return;
+    if (!mounted) return;
+    setState(() {
+      _pairedPeerId = peer.id;
+      _pairedPin = pin;
+    });
+  }
+
   Future<void> _sendSnapshot(LanPeer peer) async {
     final service = _service;
     if (service == null) return;
-    final pin = await _askPin(context, peer, action: 'Send my ledger');
+    final pin = await _pinFor(peer);
     if (pin == null) return;
     final done = await _runBusy<bool>('Sending…', () async {
       await service.sendSnapshot(peer, pin);
       return true;
     });
-    if (done == true && mounted) {
-      showToast(
-        context,
-        'Snapshot sent to ${peer.name}. It waits there for confirmation.',
-      );
+    if (done == true) {
+      await _rememberPair(peer, pin);
+      if (mounted) {
+        showToast(
+          context,
+          'Snapshot sent to ${peer.name}. It waits there for confirmation.',
+        );
+      }
     }
   }
 
   Future<void> _pullSnapshot(LanPeer peer) async {
     final service = _service;
     if (service == null) return;
-    final pin = await _askPin(context, peer, action: 'Pull their ledger');
+    final pin = await _pinFor(peer);
     if (pin == null) return;
     final item = await _runBusy<LanInboxItem>(
       'Pulling…',
       () => service.pullSnapshot(peer, pin),
     );
-    if (item != null && mounted) {
-      showToast(
-        context,
-        'Snapshot received. Restore it from the inbox when you are ready.',
-      );
+    if (item != null) {
+      await _rememberPair(peer, pin);
+      if (mounted) {
+        showToast(
+          context,
+          'Snapshot received. Restore it from the inbox when you are ready.',
+        );
+      }
     }
   }
 
@@ -192,14 +268,15 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
     if (service == null) return;
     final shared = await _composeText(context);
     if (shared == null || !mounted) return;
-    final pin = await _askPin(context, peer, action: 'Send note');
+    final pin = await _pinFor(peer);
     if (pin == null) return;
     final done = await _runBusy<bool>('Sending note…', () async {
       await service.sendText(peer, pin, title: shared.title, text: shared.text);
       return true;
     });
-    if (done == true && mounted) {
-      showToast(context, 'Note sent to ${peer.name}.');
+    if (done == true) {
+      await _rememberPair(peer, pin);
+      if (mounted) showToast(context, 'Note sent to ${peer.name}.');
     }
   }
 
@@ -214,15 +291,282 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
       return;
     }
     if (picked == null || !mounted) return;
-    final pin = await _askPin(context, peer, action: 'Send file');
+    final pin = await _pinFor(peer);
     if (pin == null) return;
     final done = await _runBusy<bool>('Sending file…', () async {
       await service.sendFile(peer, pin, File(picked!.path));
       return true;
     });
-    if (done == true && mounted) {
-      showToast(context, 'File sent to ${peer.name}.');
+    if (done == true) {
+      await _rememberPair(peer, pin);
+      if (mounted) showToast(context, 'File sent to ${peer.name}.');
     }
+  }
+
+  Future<LanPeer?> _choosePeer() async {
+    if (_peers.isEmpty) return null;
+    if (_peers.length == 1) return _peers.first;
+    return showDialog<LanPeer>(
+      context: context,
+      builder: (dialogContext) {
+        final colors = dialogContext.colors;
+        return SimpleDialog(
+          title: const Text('Sync with which device?'),
+          children: [
+            for (final peer in _peers)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(dialogContext).pop(peer),
+                child: Row(
+                  children: [
+                    Icon(
+                      _platformIcon(peer.platform),
+                      size: 18,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(width: AppSpace.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            peer.name,
+                            style: AppText.bodyMedium.copyWith(
+                              color: colors.ink,
+                            ),
+                          ),
+                          Text(
+                            '${_platformLabel(peer.platform)} · ${peer.endpoint}',
+                            style: AppText.monoData.copyWith(
+                              color: colors.inkFaint,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _syncNow() async {
+    final service = _service;
+    if (service == null) return;
+    var peer = _pairedPeer;
+    peer ??= await _choosePeer();
+    if (peer == null) {
+      if (mounted) {
+        showToast(
+          context,
+          'Pair or discover a device first. Show your QR and scan it on the '
+          'other device.',
+          duration: const Duration(seconds: 4),
+        );
+        _setTab(0);
+      }
+      return;
+    }
+    if (!mounted) return;
+    final target = peer;
+    final pin = await _pinFor(target);
+    if (pin == null) return;
+    final item = await _runBusy<LanInboxItem>(
+      'Syncing both ways…',
+      () => service.syncWithPeer(target, pin),
+    );
+    if (item == null) return;
+    await _rememberPair(target, pin);
+    if (!mounted) return;
+    _setTab(2);
+    showToast(
+      context,
+      'Ledger exchanged with ${target.name}. Their snapshot is in Inbox.',
+      duration: const Duration(seconds: 5),
+    );
+  }
+
+  void _setTab(int index) {
+    if (!mounted || _tab == index) return;
+    setState(() => _tab = index);
+  }
+
+  Future<void> _pairDevice() async {
+    final canScan = Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+    if (!canScan) {
+      await _pastePairingLink();
+      return;
+    }
+    final granted = await _requestCameraPermission();
+    if (!granted || !mounted) return;
+    final raw = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _QrScannerDialog(),
+    );
+    if (raw == null || !mounted) return;
+    await _applyPairing(raw);
+  }
+
+  Future<bool> _requestCameraPermission() async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      final status = await Permission.camera.request();
+      if (status.isGranted) return true;
+      if (mounted) {
+        await _showPermissionHelp(
+          title: 'Camera access is needed',
+          message:
+              'Daymark uses the camera only while this scanner is open. Allow '
+              'Camera for Daymark in system settings, then try again.',
+        );
+      }
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _showPermissionHelp({
+    required String title,
+    required String message,
+  }) async {
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Open settings'),
+          ),
+        ],
+      ),
+    );
+    if (open == true) await openAppSettings();
+  }
+
+  Future<void> _pastePairingLink() async {
+    final controller = TextEditingController();
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Paste a pairing link'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'On the other device choose “Show pairing QR”, then copy its '
+                'pairing link and paste it here.',
+                style: AppText.bodySmall.copyWith(
+                  color: dialogContext.colors.inkMuted,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: AppSpace.md),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'daymark://pair?…',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('Pair'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (raw == null || !mounted) return;
+    await _applyPairing(raw);
+  }
+
+  Future<void> _applyPairing(String raw) async {
+    final pairing = LanPairing.parse(raw);
+    if (pairing == null) {
+      if (mounted) {
+        showToast(
+          context,
+          'That is not a Daymark pairing code. Show a fresh QR and try again.',
+        );
+      }
+      return;
+    }
+    final service = _service;
+    if (service == null) return;
+    final peer = await _runBusy<LanPeer?>(
+      'Pairing…',
+      () => service.probe(pairing.host, pairing.port),
+    );
+    if (peer == null) return;
+    if (!mounted) return;
+    setState(() {
+      _pairedPeerId = peer.id;
+      _pairedPin = pairing.pin;
+      _tab = 1;
+    });
+    showToast(
+      context,
+      'Paired with ${peer.name}. The transfer code is remembered until you go '
+      'offline.',
+      duration: const Duration(seconds: 4),
+    );
+  }
+
+  Future<void> _showPairingQr() async {
+    final service = _service;
+    if (service == null) return;
+    final pairing = await service.pairingInfo();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _PairingQrDialog(
+        pairing: pairing,
+        pin: service.pin,
+        port: service.port,
+      ),
+    );
+  }
+
+  Future<void> _clearHistory() async {
+    final service = _service;
+    if (service == null) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Clear transfer history?',
+      message:
+          'Received items in the inbox stay put. Only the audit trail of what '
+          'was sent, received, restored, or journaled is removed.',
+      confirmLabel: 'Clear history',
+      danger: true,
+      icon: Icons.history_toggle_off_rounded,
+    );
+    if (confirmed) await service.clearHistory();
   }
 
   Future<void> _manualConnect() async {
@@ -262,6 +606,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
       () => backup.importFile(File(path)),
     );
     if (result == null) return;
+    await _service?.markHistoryForItem(item.id, 'restored');
     _refreshAll();
     if (!mounted) return;
     showToast(
@@ -274,7 +619,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
   Future<void> _saveTextToJournal(LanInboxItem item) async {
     final text = item.text?.trim() ?? '';
     if (text.isEmpty) return;
-    final entries = ref.read(journalProvider).valueOrNull ?? const [];
+    final entries = ref.read(journalProvider).value ?? const [];
     final key = dateKey(DateTime.now());
     JournalEntry? existing;
     for (final entry in entries) {
@@ -297,6 +642,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
             mood: existing?.mood,
             energy: existing?.energy,
           );
+      await _service?.markHistoryForItem(item.id, 'journaled');
       if (mounted) {
         showToast(context, 'Added to today’s journal.');
       }
@@ -359,16 +705,21 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
               eyebrow: 'Close range, no cloud',
               title: 'Nearby',
               subtitle:
-                  'Move a ledger snapshot, a file, or a note between devices on '
-                  'the same network. Direct, ephemeral, and yours.',
+                  'Sync a ledger, send a note or file, and keep a clear record '
+                  'of everything that moved between your devices.',
               actions: [
-                if (online)
+                if (online) ...[
+                  FilledButton.icon(
+                    onPressed: _busy ? null : _syncNow,
+                    icon: const Icon(Icons.sync_rounded, size: 18),
+                    label: const Text('Sync now'),
+                  ),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _stop,
                     icon: const Icon(Icons.stop_circle_outlined, size: 18),
                     label: const Text('Go offline'),
-                  )
-                else
+                  ),
+                ] else
                   FilledButton.icon(
                     onPressed: _starting ? null : _start,
                     icon: _starting
@@ -398,94 +749,1457 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
                 onShareFile: () => _shareFileStandalone(context),
               )
             else ...[
-              if (wide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 6,
-                      child: Column(
-                        children: [
-                          _DeviceCard(
-                            service: service,
-                            onStop: _busy ? null : _stop,
-                            onReceivingChanged: (value) {
-                              service.setReceiving(value);
-                              setState(() {});
-                            },
-                            onCopyPin: () {
-                              Clipboard.setData(
-                                ClipboardData(text: service.pin),
-                              );
-                              showToast(context, 'Code copied');
-                            },
-                          ),
-                          const SizedBox(height: AppSpace.lg),
-                          _PeersCard(
-                            peers: _peers,
-                            busy: _busy,
-                            busyLabel: _busyLabel,
-                            onSendSnapshot: _sendSnapshot,
-                            onPullSnapshot: _pullSnapshot,
-                            onSendText: _sendText,
-                            onSendFile: _sendFile,
-                            onManual: _manualConnect,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: AppSpace.x3),
-                    Expanded(
-                      flex: 5,
-                      child: _InboxPanel(
-                        items: _inbox,
-                        busy: _busy,
-                        onRestoreSnapshot: _restoreSnapshot,
-                        onSaveText: _saveTextToJournal,
-                        onTextToTask: _textToTask,
-                        onDelete: _deleteInboxItem,
-                      ),
-                    ),
-                  ],
-                )
-              else ...[
-                _DeviceCard(
-                  service: service,
-                  onStop: _busy ? null : _stop,
-                  onReceivingChanged: (value) {
-                    service.setReceiving(value);
-                    setState(() {});
-                  },
-                  onCopyPin: () {
-                    Clipboard.setData(ClipboardData(text: service.pin));
-                    showToast(context, 'Code copied');
-                  },
+              _NearbyTabs(
+                index: _tab,
+                inboxCount: _inbox.length,
+                historyCount: _history.length,
+                onChanged: _setTab,
+              ),
+              const SizedBox(height: AppSpace.lg),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                child: KeyedSubtree(
+                  key: ValueKey(_tab),
+                  child: _tabContent(service, wide),
                 ),
-                const SizedBox(height: AppSpace.lg),
-                _PeersCard(
-                  peers: _peers,
-                  busy: _busy,
-                  busyLabel: _busyLabel,
-                  onSendSnapshot: _sendSnapshot,
-                  onPullSnapshot: _pullSnapshot,
-                  onSendText: _sendText,
-                  onSendFile: _sendFile,
-                  onManual: _manualConnect,
-                ),
-                const SizedBox(height: AppSpace.lg),
-                _InboxPanel(
-                  items: _inbox,
-                  busy: _busy,
-                  onRestoreSnapshot: _restoreSnapshot,
-                  onSaveText: _saveTextToJournal,
-                  onTextToTask: _textToTask,
-                  onDelete: _deleteInboxItem,
-                ),
-              ],
+              ),
               const SizedBox(height: AppSpace.lg),
               _PrivacyNote(colors: colors),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabContent(LanSyncService service, bool wide) {
+    switch (_tab) {
+      case 1:
+        return _sendTab(service, wide);
+      case 2:
+        return _InboxPanel(
+          items: _inbox,
+          busy: _busy,
+          onRestoreSnapshot: _restoreSnapshot,
+          onSaveText: _saveTextToJournal,
+          onTextToTask: _textToTask,
+          onDelete: _deleteInboxItem,
+        );
+      case 3:
+        return _HistoryPanel(
+          entries: _history,
+          busy: _busy,
+          onClear: _clearHistory,
+          onOpenInbox: () => _setTab(2),
+        );
+      default:
+        return _syncTab(service, wide);
+    }
+  }
+
+  Widget _syncTab(LanSyncService service, bool wide) {
+    final device = _DeviceCard(
+      service: service,
+      onStop: _busy ? null : _stop,
+      onReceivingChanged: (value) {
+        service.setReceiving(value);
+        setState(() {});
+      },
+      onCopyPin: () {
+        Clipboard.setData(ClipboardData(text: service.pin));
+        showToast(context, 'Code copied');
+      },
+    );
+    final pairing = _PairingCard(
+      pairedPeer: _pairedPeer,
+      canScan: Platform.isAndroid || Platform.isIOS || Platform.isMacOS,
+      busy: _busy,
+      onShowQr: _showPairingQr,
+      onScan: _pairDevice,
+      onPaste: _pastePairingLink,
+      onManual: _manualConnect,
+      onForget: () {
+        setState(() {
+          _pairedPeerId = null;
+          _pairedPin = null;
+        });
+      },
+    );
+    final sync = _SyncNowCard(
+      pairedPeer: _pairedPeer,
+      peers: _peers.length,
+      busy: _busy,
+      busyLabel: _busyLabel,
+      onSync: _syncNow,
+      onPair: _pairDevice,
+    );
+    const permissions = _PermissionNotice();
+    if (!wide) {
+      return Column(
+        children: [
+          device,
+          const SizedBox(height: AppSpace.lg),
+          sync,
+          const SizedBox(height: AppSpace.lg),
+          pairing,
+          const SizedBox(height: AppSpace.lg),
+          permissions,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 6,
+          child: Column(
+            children: [
+              device,
+              const SizedBox(height: AppSpace.lg),
+              pairing,
+            ],
+          ),
+        ),
+        const SizedBox(width: AppSpace.x3),
+        Expanded(
+          flex: 5,
+          child: Column(
+            children: [
+              sync,
+              const SizedBox(height: AppSpace.lg),
+              permissions,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sendTab(LanSyncService service, bool wide) {
+    final paired = _pairedPeer;
+    final left = Column(
+      children: [
+        if (paired != null) ...[
+          _PairedSendCard(
+            peer: paired,
+            busy: _busy,
+            onLedger: () => _sendSnapshot(paired),
+            onPull: () => _pullSnapshot(paired),
+            onNote: () => _sendText(paired),
+            onFile: () => _sendFile(paired),
+          ),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        _PeersCard(
+          peers: _peers,
+          busy: _busy,
+          busyLabel: _busyLabel,
+          onSendSnapshot: _sendSnapshot,
+          onPullSnapshot: _pullSnapshot,
+          onSendText: _sendText,
+          onSendFile: _sendFile,
+          onManual: _manualConnect,
+        ),
+      ],
+    );
+    final guide = _SendGuideCard(
+      paired: paired,
+      onPair: _pairDevice,
+      onShareText: () => _shareTextStandalone(context),
+      onShareFile: () => _shareFileStandalone(context),
+    );
+    if (!wide) {
+      return Column(
+        children: [
+          left,
+          const SizedBox(height: AppSpace.lg),
+          guide,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 7, child: left),
+        const SizedBox(width: AppSpace.x3),
+        Expanded(flex: 4, child: guide),
+      ],
+    );
+  }
+}
+
+class _NearbyTabs extends StatelessWidget {
+  const _NearbyTabs({
+    required this.index,
+    required this.inboxCount,
+    required this.historyCount,
+    required this.onChanged,
+  });
+
+  final int index;
+  final int inboxCount;
+  final int historyCount;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: colors.surfaceSunken.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        border: Border.all(color: colors.line),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _NearbyTabButton(
+              label: 'Sync',
+              icon: Icons.sync_rounded,
+              selected: index == 0,
+              onTap: () => onChanged(0),
+            ),
+            _NearbyTabButton(
+              label: 'Send',
+              icon: Icons.north_east_rounded,
+              selected: index == 1,
+              onTap: () => onChanged(1),
+            ),
+            _NearbyTabButton(
+              label: inboxCount == 0 ? 'Inbox' : 'Inbox · $inboxCount',
+              icon: Icons.move_to_inbox_outlined,
+              selected: index == 2,
+              onTap: () => onChanged(2),
+            ),
+            _NearbyTabButton(
+              label: historyCount == 0 ? 'History' : 'History · $historyCount',
+              icon: Icons.history_rounded,
+              selected: index == 3,
+              onTap: () => onChanged(3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NearbyTabButton extends StatelessWidget {
+  const _NearbyTabButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Material(
+        color: selected ? colors.surface : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.badge),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.badge),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 42),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.badge),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: colors.shadow.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: selected ? colors.primary : colors.inkFaint,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: AppText.bodySmall.copyWith(
+                    color: selected ? colors.primary : colors.inkMuted,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PairingCard extends StatelessWidget {
+  const _PairingCard({
+    required this.pairedPeer,
+    required this.canScan,
+    required this.busy,
+    required this.onShowQr,
+    required this.onScan,
+    required this.onPaste,
+    required this.onManual,
+    required this.onForget,
+  });
+
+  final LanPeer? pairedPeer;
+  final bool canScan;
+  final bool busy;
+  final VoidCallback onShowQr;
+  final VoidCallback onScan;
+  final VoidCallback onPaste;
+  final VoidCallback onManual;
+  final VoidCallback onForget;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.qr_code_2_rounded, size: 18, color: colors.primary),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: Text(
+                  'Pairing',
+                  style: AppText.titleM.copyWith(
+                    color: colors.ink,
+                    fontSize: 15.5,
+                  ),
+                ),
+              ),
+              if (pairedPeer != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.green.withValues(alpha: 0.13),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    'PAIRED',
+                    style: AppText.label.copyWith(
+                      color: colors.green,
+                      fontSize: 8,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          if (pairedPeer != null) ...[
+            Container(
+              padding: const EdgeInsets.all(AppSpace.md),
+              decoration: BoxDecoration(
+                color: colors.primarySoft.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(AppRadius.input),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _platformIcon(pairedPeer!.platform),
+                    size: 20,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pairedPeer!.name,
+                          style: AppText.bodyMedium.copyWith(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '${_platformLabel(pairedPeer!.platform)} · '
+                          '${pairedPeer!.endpoint}',
+                          style: AppText.monoData.copyWith(
+                            color: colors.inkFaint,
+                            fontSize: 9.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : onForget,
+                    child: const Text('Forget'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpace.md),
+          ] else
+            Text(
+              'Pair once, then Sync now reuses the code until you go offline. '
+              'The QR contains the same six-digit code shown on this screen.',
+              style: AppText.bodySmall.copyWith(
+                color: colors.inkMuted,
+                fontSize: 10.8,
+                height: 1.5,
+              ),
+            ),
+          const SizedBox(height: AppSpace.md),
+          Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.sm,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: busy ? null : onShowQr,
+                icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+                label: const Text('Show pairing QR'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : (canScan ? onScan : onPaste),
+                icon: Icon(
+                  canScan
+                      ? Icons.qr_code_scanner_rounded
+                      : Icons.content_paste_rounded,
+                  size: 16,
+                ),
+                label: Text(canScan ? 'Scan QR' : 'Paste link'),
+              ),
+              if (canScan)
+                TextButton(
+                  onPressed: busy ? null : onPaste,
+                  child: const Text('Paste link'),
+                ),
+              TextButton(
+                onPressed: busy ? null : onManual,
+                child: const Text('Manual address'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SyncNowCard extends StatelessWidget {
+  const _SyncNowCard({
+    required this.pairedPeer,
+    required this.peers,
+    required this.busy,
+    required this.busyLabel,
+    required this.onSync,
+    required this.onPair,
+  });
+
+  final LanPeer? pairedPeer;
+  final int peers;
+  final bool busy;
+  final String? busyLabel;
+  final VoidCallback onSync;
+  final VoidCallback onPair;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final target = pairedPeer?.name;
+    return SurfaceCard(
+      color: colors.primarySoft.withValues(alpha: 0.28),
+      borderColor: colors.primary.withValues(alpha: 0.22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colors.primary,
+                borderRadius: BorderRadius.circular(AppRadius.badge),
+              ),
+              child: Icon(
+                Icons.sync_rounded,
+                size: 21,
+                color: colors.onPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          Text(
+            'One-tap sync',
+            style: AppText.titleM.copyWith(color: colors.ink, fontSize: 17),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            target != null
+                ? 'Exchange the latest ledger with $target. Their copy waits '
+                      'in Inbox; nothing is overwritten automatically.'
+                : peers > 0
+                ? 'Choose a nearby device, exchange both ledgers, and review '
+                      'their copy in Inbox.'
+                : 'Pair a device first. Show this device’s QR and scan it on '
+                      'the other device, then sync with one tap.',
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkMuted,
+              fontSize: 11.2,
+              height: 1.5,
+            ),
+          ),
+          if (busy && busyLabel != null) ...[
+            const SizedBox(height: AppSpace.md),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: AppSpace.sm),
+                Text(
+                  busyLabel!,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: AppSpace.lg),
+          FilledButton.icon(
+            onPressed: busy
+                ? null
+                : (pairedPeer == null && peers == 0 ? onPair : onSync),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
+            icon: Icon(
+              pairedPeer == null && peers == 0
+                  ? Icons.qr_code_scanner_rounded
+                  : Icons.sync_rounded,
+              size: 18,
+            ),
+            label: Text(
+              pairedPeer == null && peers == 0 ? 'Pair a device' : 'Sync now',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PermissionNotice extends StatelessWidget {
+  const _PermissionNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final copy = switch (Platform.operatingSystem) {
+      'android' =>
+        'Allow Camera for QR scanning. Android may also ask for Nearby devices '
+            'or Local network access; both are used only for device-to-device '
+            'transfers.',
+      'ios' =>
+        'Allow Local Network to discover another Daymark device and Camera to '
+            'scan a pairing QR. Transfers never leave your Wi-Fi.',
+      'macos' =>
+        'Allow Camera for QR scanning. Approve incoming connections if macOS '
+            'asks; the LAN server binds only to your local network.',
+      'windows' =>
+        'Allow Daymark through Windows Firewall on private networks. If '
+            'discovery stays empty, use Manual address.',
+      'linux' =>
+        'Allow Daymark through your firewall on trusted networks. If '
+            'discovery stays empty, use Manual address.',
+      _ => 'Camera is used only while scanning. Nothing is sent to the cloud.',
+    };
+    final canOpenSettings = Platform.isAndroid || Platform.isIOS;
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceSunken.withValues(alpha: 0.36),
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        border: Border.all(color: colors.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.verified_user_outlined, size: 16, color: colors.blue),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Permissions on this device',
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  copy,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.5,
+                    height: 1.45,
+                  ),
+                ),
+                if (canOpenSettings)
+                  TextButton(
+                    onPressed: openAppSettings,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 30),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Open system settings'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PairedSendCard extends StatelessWidget {
+  const _PairedSendCard({
+    required this.peer,
+    required this.busy,
+    required this.onLedger,
+    required this.onPull,
+    required this.onNote,
+    required this.onFile,
+  });
+
+  final LanPeer peer;
+  final bool busy;
+  final VoidCallback onLedger;
+  final VoidCallback onPull;
+  final VoidCallback onNote;
+  final VoidCallback onFile;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _platformIcon(peer.platform),
+                size: 18,
+                color: colors.primary,
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: Text(
+                  'Send to ${peer.name}',
+                  style: AppText.titleM.copyWith(
+                    color: colors.ink,
+                    fontSize: 15.5,
+                  ),
+                ),
+              ),
+              Text(
+                'PAIRED',
+                style: AppText.label.copyWith(color: colors.green, fontSize: 8),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'The transfer code is already remembered for this session.',
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkFaint,
+              fontSize: 10.5,
+            ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.sm,
+            children: [
+              FilledButton.icon(
+                onPressed: busy ? null : onNote,
+                icon: const Icon(Icons.sticky_note_2_outlined, size: 16),
+                label: const Text('Send note'),
+              ),
+              FilledButton.icon(
+                onPressed: busy ? null : onFile,
+                icon: const Icon(Icons.attach_file_rounded, size: 16),
+                label: const Text('Send file'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onLedger,
+                icon: const Icon(Icons.upload_file_rounded, size: 16),
+                label: const Text('Send ledger'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onPull,
+                icon: const Icon(Icons.download_rounded, size: 16),
+                label: const Text('Pull theirs'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SendGuideCard extends StatelessWidget {
+  const _SendGuideCard({
+    required this.paired,
+    required this.onPair,
+    required this.onShareText,
+    required this.onShareFile,
+  });
+
+  final LanPeer? paired;
+  final VoidCallback onPair;
+  final VoidCallback onShareText;
+  final VoidCallback onShareFile;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'What can I send?',
+            style: AppText.titleM.copyWith(color: colors.ink, fontSize: 15.5),
+          ),
+          const SizedBox(height: AppSpace.md),
+          const _GuideRow(
+            icon: Icons.sticky_note_2_outlined,
+            title: 'A note',
+            body:
+                'Markdown text lands in the other device’s Inbox, ready for '
+                'the journal or a task.',
+          ),
+          const _GuideRow(
+            icon: Icons.attach_file_rounded,
+            title: 'A file',
+            body:
+                'Any file up to 100 MB. It stays in Inbox until you share or '
+                'copy it.',
+          ),
+          const _GuideRow(
+            icon: Icons.inventory_2_outlined,
+            title: 'The ledger',
+            body:
+                'A full snapshot. The other device reviews it before any '
+                'restore happens.',
+          ),
+          if (paired == null) ...[
+            const SizedBox(height: AppSpace.sm),
+            FilledButton.tonalIcon(
+              onPressed: onPair,
+              icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+              label: const Text('Pair a device'),
+            ),
+          ],
+          const SizedBox(height: AppSpace.lg),
+          Divider(color: colors.line),
+          const SizedBox(height: AppSpace.sm),
+          Text(
+            'No receiver? Use the system share sheet.',
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkMuted,
+              fontSize: 10.8,
+            ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.sm,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onShareText,
+                icon: const Icon(Icons.text_snippet_outlined, size: 15),
+                label: const Text('Share text'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onShareFile,
+                icon: const Icon(Icons.attach_file_rounded, size: 15),
+                label: const Text('Share file'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuideRow extends StatelessWidget {
+  const _GuideRow({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.badge),
+            ),
+            child: Icon(icon, size: 15, color: colors.primary),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  body,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.5,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryPanel extends StatefulWidget {
+  const _HistoryPanel({
+    required this.entries,
+    required this.busy,
+    required this.onClear,
+    required this.onOpenInbox,
+  });
+
+  final List<LanHistoryEntry> entries;
+  final bool busy;
+  final VoidCallback onClear;
+  final VoidCallback onOpenInbox;
+
+  @override
+  State<_HistoryPanel> createState() => _HistoryPanelState();
+}
+
+class _HistoryPanelState extends State<_HistoryPanel> {
+  int _filter = 0; // 0 all, 1 sent, 2 received
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final entries = widget.entries.where((entry) {
+      if (_filter == 1) return entry.isSent;
+      if (_filter == 2) return entry.isReceived;
+      return true;
+    }).toList();
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Transfer history',
+                      style: AppText.titleM.copyWith(
+                        color: colors.ink,
+                        fontSize: 15.5,
+                      ),
+                    ),
+                    Text(
+                      'A durable record of ledgers, notes, and files. It stays '
+                      'after an item leaves the inbox.',
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.inkFaint,
+                        fontSize: 10.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.entries.isNotEmpty)
+                TextButton(
+                  onPressed: widget.busy ? null : widget.onClear,
+                  child: const Text('Clear'),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          Wrap(
+            spacing: AppSpace.sm,
+            runSpacing: AppSpace.sm,
+            children: [
+              _HistoryFilter(
+                label: 'All',
+                count: widget.entries.length,
+                selected: _filter == 0,
+                onTap: () => setState(() => _filter = 0),
+              ),
+              _HistoryFilter(
+                label: 'Sent',
+                count: widget.entries.where((entry) => entry.isSent).length,
+                selected: _filter == 1,
+                onTap: () => setState(() => _filter = 1),
+              ),
+              _HistoryFilter(
+                label: 'Received',
+                count: widget.entries.where((entry) => entry.isReceived).length,
+                selected: _filter == 2,
+                onTap: () => setState(() => _filter = 2),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          if (entries.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                vertical: AppSpace.xxl,
+                horizontal: AppSpace.lg,
+              ),
+              decoration: BoxDecoration(
+                color: colors.surfaceSunken.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(AppRadius.input),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.history_rounded, size: 26, color: colors.inkFaint),
+                  const SizedBox(height: AppSpace.sm),
+                  Text(
+                    'No transfers recorded yet',
+                    style: AppText.bodyMedium.copyWith(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Send or receive a ledger, note, or file and it will appear '
+                    'here with its status.',
+                    textAlign: TextAlign.center,
+                    style: AppText.bodySmall.copyWith(
+                      color: colors.inkFaint,
+                      fontSize: 10.8,
+                    ),
+                  ),
+                  if (_filter == 2) ...[
+                    const SizedBox(height: AppSpace.md),
+                    TextButton(
+                      onPressed: widget.onOpenInbox,
+                      child: const Text('Open inbox'),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          else
+            for (final entry in entries) _HistoryRow(entry: entry),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryFilter extends StatelessWidget {
+  const _HistoryFilter({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Material(
+      color: selected
+          ? colors.primarySoft
+          : colors.surfaceSunken.withValues(alpha: 0.4),
+      borderRadius: BorderRadius.circular(99),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Text(
+            '$label · $count',
+            style: AppText.bodySmall.copyWith(
+              color: selected ? colors.primary : colors.inkMuted,
+              fontSize: 10.8,
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.entry});
+
+  final LanHistoryEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final icon = switch (entry.kind) {
+      'snapshot' => Icons.inventory_2_outlined,
+      'text' => Icons.sticky_note_2_outlined,
+      _ => Icons.attach_file_rounded,
+    };
+    final (statusLabel, statusColor) = switch (entry.status) {
+      'sent' => ('Sent', colors.blue),
+      'received' => ('In inbox', colors.accent),
+      'restored' => ('Restored', colors.green),
+      'journaled' => ('In journal', colors.gold),
+      'removed' => ('Removed', colors.inkFaint),
+      _ => (entry.status, colors.inkFaint),
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpace.sm),
+      padding: const EdgeInsets.all(AppSpace.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceSunken.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        border: Border.all(color: colors.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.badge),
+            ),
+            child: Icon(icon, size: 16, color: colors.primary),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      entry.isSent
+                          ? Icons.north_east_rounded
+                          : Icons.south_west_rounded,
+                      size: 12,
+                      color: entry.isSent ? colors.blue : colors.accent,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        entry.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.bodySmall.copyWith(
+                          color: colors.ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${entry.isSent ? 'To' : 'From'} ${entry.peerName} · '
+                  '${savedLabel(entry.createdAt, DateTime.now())}'
+                  '${entry.sizeLabel.isEmpty ? '' : ' · ${entry.sizeLabel}'}',
+                  style: AppText.monoData.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              statusLabel,
+              style: AppText.label.copyWith(color: statusColor, fontSize: 7.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PairingQrDialog extends StatelessWidget {
+  const _PairingQrDialog({
+    required this.pairing,
+    required this.pin,
+    required this.port,
+  });
+
+  final LanPairing? pairing;
+  final String pin;
+  final int? port;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final data = pairing?.encode();
+    return AlertDialog(
+      title: const Text('Scan to pair'),
+      content: SizedBox(
+        width: 390,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                pairing == null
+                    ? 'Daymark could not detect a LAN address. Use Manual '
+                          'address on the other device with the port below.'
+                    : 'Open Daymark on the other device, choose Nearby → Sync → '
+                          'Scan QR, and point the camera here.',
+                style: AppText.bodySmall.copyWith(
+                  color: colors.inkMuted,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              if (data != null)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      border: Border.all(color: colors.line),
+                    ),
+                    child: QrImageView(
+                      data: data,
+                      size: 226,
+                      backgroundColor: Colors.white,
+                      errorCorrectionLevel: QrErrorCorrectLevel.M,
+                      eyeStyle: const QrEyeStyle(
+                        eyeShape: QrEyeShape.square,
+                        color: Colors.black,
+                      ),
+                      dataModuleStyle: const QrDataModuleStyle(
+                        dataModuleShape: QrDataModuleShape.square,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(AppSpace.xl),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceSunken.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.qr_code_2_rounded,
+                        size: 54,
+                        color: colors.inkFaint,
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      Text(
+                        'No LAN address detected',
+                        style: AppText.bodyMedium.copyWith(color: colors.ink),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: AppSpace.md),
+              Center(
+                child: SelectableText(
+                  pin.split('').join(' '),
+                  style: AppText.monoLarge.copyWith(
+                    color: colors.ink,
+                    fontSize: 24,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+              Center(
+                child: Text(
+                  pairing == null
+                      ? 'Port ${port ?? 'unknown'}'
+                      : '${pairing!.host}:${pairing!.port}',
+                  style: AppText.monoData.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpace.sm),
+              Text(
+                'The QR carries this session’s six-digit code. Treat it like '
+                'the code itself and show it only to your own device.',
+                textAlign: TextAlign.center,
+                style: AppText.bodySmall.copyWith(
+                  color: colors.inkFaint,
+                  fontSize: 10,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (data != null)
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: data));
+              showToast(context, 'Pairing link copied');
+            },
+            icon: const Icon(Icons.copy_rounded, size: 15),
+            label: const Text('Copy link'),
+          ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
+
+class _QrScannerDialog extends StatefulWidget {
+  const _QrScannerDialog();
+
+  @override
+  State<_QrScannerDialog> createState() => _QrScannerDialogState();
+}
+
+class _QrScannerDialogState extends State<_QrScannerDialog> {
+  bool _handled = false;
+
+  void _detected(BarcodeCapture capture) {
+    if (_handled) return;
+    final raw = capture.barcodes.firstOrNull?.rawValue;
+    if (raw == null || raw.trim().isEmpty) return;
+    _handled = true;
+    Navigator.of(context).pop(raw);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(AppSpace.lg),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: SizedBox(
+          height: 480,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              MobileScanner(
+                onDetect: _detected,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error) {
+                  final denied =
+                      error.errorCode ==
+                      MobileScannerErrorCode.permissionDenied;
+                  final canOpenSettings =
+                      Platform.isAndroid || Platform.isIOS;
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpace.xl),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.no_photography_outlined,
+                            color: Colors.white70,
+                            size: 34,
+                          ),
+                          const SizedBox(height: AppSpace.sm),
+                          Text(
+                            denied
+                                ? 'Camera access is off'
+                                : 'The camera could not start',
+                            textAlign: TextAlign.center,
+                            style: AppText.titleM.copyWith(color: Colors.white),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            denied
+                                ? 'Allow Camera for Daymark in system settings, '
+                                      'then reopen the scanner.'
+                                : '$error',
+                            textAlign: TextAlign.center,
+                            style: AppText.bodySmall.copyWith(
+                              color: Colors.white60,
+                              fontSize: 10.8,
+                            ),
+                          ),
+                          if (denied && canOpenSettings) ...[
+                            const SizedBox(height: AppSpace.md),
+                            OutlinedButton(
+                              onPressed: openAppSettings,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white38),
+                              ),
+                              child: const Text('Open settings'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
+                top: 12,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Scan a Daymark pairing QR',
+                        style: AppText.bodySmall.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          shadows: const [
+                            Shadow(color: Colors.black54, blurRadius: 8),
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close scanner',
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black45,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.close_rounded, size: 19),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: AppSpace.lg,
+                right: AppSpace.lg,
+                bottom: AppSpace.lg,
+                child: Container(
+                  padding: const EdgeInsets.all(AppSpace.sm),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.62),
+                    borderRadius: BorderRadius.circular(AppRadius.input),
+                  ),
+                  child: Text(
+                    'Point at the QR on the other device’s Sync tab.',
+                    textAlign: TextAlign.center,
+                    style: AppText.bodySmall.copyWith(
+                      color: Colors.white,
+                      fontSize: 10.8,
+                    ),
+                  ),
+                ),
+              ),
+              IgnorePointer(
+                child: Center(
+                  child: Container(
+                    width: 230,
+                    height: 230,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colors.primarySoft, width: 3),
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

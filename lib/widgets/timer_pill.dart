@@ -16,7 +16,7 @@ class TimerPill extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(timerProvider).valueOrNull;
+    final state = ref.watch(timerProvider).value;
     final session = state?.session;
     if (session == null) return const SizedBox.shrink();
     final colors = context.colors;

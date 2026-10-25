@@ -10,7 +10,7 @@ class SettingsController extends AsyncNotifier<AppSettings> {
   }
 
   Future<void> save(AppSettings settings) async {
-    final previous = state.valueOrNull;
+    final previous = state.value;
     state = AsyncData(settings);
     try {
       await ref.read(settingsRepositoryProvider).save(settings);
@@ -21,7 +21,7 @@ class SettingsController extends AsyncNotifier<AppSettings> {
   }
 
   Future<void> patch(AppSettings Function(AppSettings current) update) async {
-    final current = state.valueOrNull ?? AppSettings.defaults;
+    final current = state.value ?? AppSettings.defaults;
     await save(update(current));
   }
 

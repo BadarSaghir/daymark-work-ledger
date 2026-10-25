@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../core/utils/date_keys.dart';
 import '../data/models/enums.dart';
@@ -140,7 +141,7 @@ class AnalyticsData {
 final analyticsProvider = FutureProvider<AnalyticsData>((ref) async {
   final period = ref.watch(analyticsPeriodProvider);
   final mondayFirst =
-      ref.watch(settingsProvider).valueOrNull?.weekStartsMonday ?? true;
+      ref.watch(settingsProvider).value?.weekStartsMonday ?? true;
   final now = DateTime.now();
   final today = startOfDay(now);
   final end = addDays(today, 1);

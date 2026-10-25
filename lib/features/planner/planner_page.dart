@@ -27,8 +27,8 @@ class PlannerPage extends ConsumerWidget {
     final selected = ref.watch(selectedDateProvider);
     final listMode = ref.watch(plannerListModeProvider);
     final tasksAsync = ref.watch(tasksProvider);
-    final views = tasksAsync.valueOrNull ?? const <TaskView>[];
-    final settings = ref.watch(settingsProvider).valueOrNull;
+    final views = tasksAsync.value ?? const <TaskView>[];
+    final settings = ref.watch(settingsProvider).value;
     final dayTasks = views.forDate(selected).toList();
     final open = dayTasks.where((view) => !view.isDone).toList()
       ..sort(_sortTasks);

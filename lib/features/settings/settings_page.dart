@@ -29,6 +29,7 @@ import '../../state/settings_controller.dart';
 import '../../state/stats_providers.dart';
 import '../../state/tasks_controller.dart';
 import '../../state/timer_controller.dart';
+import '../accounts/local_account_ui.dart';
 import 'google_drive_card.dart';
 import 'reminders_card.dart';
 
@@ -51,7 +52,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    final settings = ref.read(settingsProvider).valueOrNull;
+    final settings = ref.read(settingsProvider).value;
     _weight = settings?.dailyWeightTarget ?? 25;
     _focus = settings?.dailyFocusMinutes ?? 300;
   }
@@ -67,7 +68,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final settingsAsync = ref.watch(settingsProvider);
-    final settings = settingsAsync.valueOrNull;
+    final settings = settingsAsync.value;
     if (settings != null && !_synced) {
       _synced = true;
       _name.text = settings.displayName;
@@ -467,7 +468,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       icon: Icons.info_outline_rounded,
       child: Column(
         children: [
-          _AboutRow(label: 'Version', value: '1.0.0'),
+          _AboutRow(label: 'Version', value: '1.2.0'),
           _AboutRow(label: 'Schema', value: 'v${Migrations.latestVersion}'),
           _AboutRow(
             label: 'Backup format',
@@ -518,6 +519,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     flex: 5,
                     child: Column(
                       children: [
+                        const LocalAccountCard(),
+                        const SizedBox(height: AppSpace.lg),
                         profile,
                         const SizedBox(height: AppSpace.lg),
                         rhythm,
@@ -548,6 +551,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             else
               Column(
                 children: [
+                  const LocalAccountCard(),
+                  const SizedBox(height: AppSpace.lg),
                   profile,
                   const SizedBox(height: AppSpace.lg),
                   rhythm,

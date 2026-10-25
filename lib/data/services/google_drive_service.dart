@@ -20,6 +20,34 @@ class GoogleDriveException implements Exception {
   String toString() => message;
 }
 
+/// Public Google OAuth client values baked into a release build.
+///
+/// Installed-app client secrets are not confidential in the way server secrets
+/// are; Google still expects them to travel with the client. Leaving both
+/// values empty keeps the app fully offline and exposes guided setup instead.
+class GoogleOAuthDefaults {
+  const GoogleOAuthDefaults({
+    required this.clientId,
+    required this.clientSecret,
+  });
+
+  final String clientId;
+  final String clientSecret;
+
+  static const empty = GoogleOAuthDefaults(clientId: '', clientSecret: '');
+
+  bool get configured =>
+      clientId.trim().isNotEmpty && clientSecret.trim().isNotEmpty;
+
+  factory GoogleOAuthDefaults.fromJson(Object? raw) {
+    if (raw is! Map) return empty;
+    return GoogleOAuthDefaults(
+      clientId: raw['clientId']?.toString().trim() ?? '',
+      clientSecret: raw['clientSecret']?.toString().trim() ?? '',
+    );
+  }
+}
+
 class GoogleDriveAccount {
   const GoogleDriveAccount({
     required this.id,
@@ -214,24 +242,28 @@ class CloudBackupFile {
 
 /// Uploads Daymark archives to a user-owned Google Drive folder.
 ///
-/// Daymark ships no OAuth client secret and no shared cloud account. The user
-/// supplies a Google Cloud "Desktop app" OAuth client, then connects one or
-/// more Google accounts. Refresh tokens and the client configuration live in a
-/// separate 0600 file under the app support directory, never in the ledger or
-/// its backups.
+/// A release build can embed a Google OAuth client so the normal path is one
+/// tap: continue with Google, approve Drive access, and start mirroring. Builds
+/// without embedded credentials keep a guided "bring your own client" fallback.
+/// Refresh tokens and the client configuration live in a separate 0600 file
+/// under the app support directory, never in the ledger or its backups.
 class GoogleDriveService {
   GoogleDriveService({
     required this.backupService,
     required this.configDirectory,
+    this.defaults = GoogleOAuthDefaults.empty,
     http.Client? client,
   }) : _client = client ?? http.Client();
 
   final BackupService backupService;
   final Directory configDirectory;
+  final GoogleOAuthDefaults defaults;
   final http.Client _client;
 
   final Map<String, _AccessToken> _tokens = {};
   GoogleDriveConfig? _config;
+
+  bool get hasBuiltInClient => defaults.configured;
 
   static const _scopes =
       'openid email profile https://www.googleapis.com/auth/drive.file';
@@ -244,13 +276,22 @@ class GoogleDriveService {
   Future<GoogleDriveConfig> loadConfig() async {
     final existing = _config;
     if (existing != null) return existing;
-    if (!await _configFile.exists()) return _config = GoogleDriveConfig.empty;
-    try {
-      final decoded = jsonDecode(await _configFile.readAsString());
-      return _config = GoogleDriveConfig.fromJson(decoded);
-    } catch (_) {
-      return _config = GoogleDriveConfig.empty;
+    var loaded = GoogleDriveConfig.empty;
+    if (await _configFile.exists()) {
+      try {
+        final decoded = jsonDecode(await _configFile.readAsString());
+        loaded = GoogleDriveConfig.fromJson(decoded);
+      } catch (_) {
+        loaded = GoogleDriveConfig.empty;
+      }
     }
+    if (!loaded.hasClient && defaults.configured) {
+      loaded = loaded.copyWith(
+        clientId: defaults.clientId,
+        clientSecret: defaults.clientSecret,
+      );
+    }
+    return _config = loaded;
   }
 
   Future<void> saveClient({
@@ -269,7 +310,10 @@ class GoogleDriveService {
   Future<GoogleDriveAccount> connectAccount({String? loginHint}) async {
     final config = await loadConfig();
     if (!config.hasClient) {
-      throw GoogleDriveException('Add your OAuth client ID first.');
+      throw GoogleDriveException(
+        'Google sign-in is not configured in this build. Add an OAuth client '
+        'in Settings, or use a release build with Google sign-in enabled.',
+      );
     }
 
     final verifier = _randomUrlSafe(64);

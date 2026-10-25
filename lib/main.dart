@@ -2,13 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'app/app.dart';
 import 'data/db/app_database.dart';
-import 'state/repository_providers.dart';
+import 'data/services/local_account_store.dart';
+import 'state/local_account_controller.dart';
 
 /// Daymark boots its local database before the first frame so every screen can
 /// read real data immediately. Desktop platforms use the FFI SQLite build;
@@ -23,16 +23,28 @@ Future<void> main() async {
 
   try {
     final support = await getApplicationSupportDirectory();
-    final dataDirectory = Directory(p.join(support.path, 'data'));
-    await dataDirectory.create(recursive: true);
-    final database = AppDatabase(
-      path: p.join(dataDirectory.path, 'daymark.db'),
-    );
+    final store = LocalAccountStore(support);
+    final registry = await store.load();
+    final account = registry.activeAccount;
+    if (account == null) {
+      throw StateError('No local Daymark account could be found.');
+    }
+    await store.ensureDirectory(account);
+    final database = AppDatabase(path: store.databasePath(account));
     await database.open();
 
     runApp(
       ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(database)],
+        overrides: [
+          localAccountBootProvider.overrideWithValue(
+            LocalAccountBoot(
+              store: store,
+              registry: registry,
+              account: account,
+              database: database,
+            ),
+          ),
+        ],
         child: const DaymarkApp(),
       ),
     );

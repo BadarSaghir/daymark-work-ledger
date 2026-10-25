@@ -22,8 +22,8 @@ class CategoriesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
     final categoriesAsync = ref.watch(categoriesProvider);
-    final categories = categoriesAsync.valueOrNull ?? const <Category>[];
-    final views = ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[];
+    final categories = categoriesAsync.value ?? const <Category>[];
+    final views = ref.watch(tasksProvider).value ?? const <TaskView>[];
     final active = categories.where((c) => !c.archived).toList();
     final archived = categories.where((c) => c.archived).toList();
 

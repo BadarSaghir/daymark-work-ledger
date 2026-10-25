@@ -32,9 +32,9 @@ class TodayPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final today = startOfDay(DateTime.now());
     final key = dateKey(today);
-    final settings = ref.watch(settingsProvider).valueOrNull;
+    final settings = ref.watch(settingsProvider).value;
     final tasksAsync = ref.watch(tasksProvider);
-    final views = tasksAsync.valueOrNull ?? const <TaskView>[];
+    final views = tasksAsync.value ?? const <TaskView>[];
     final dayTasks = views.forDate(today).toList()
       ..sort((a, b) {
         if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
@@ -74,7 +74,7 @@ class TodayPage extends ConsumerWidget {
             .toList()
           ..sort((a, b) => b.task.updatedAt.compareTo(a.task.updatedAt));
     final focusAsync = ref.watch(dayFocusProvider(today));
-    final focusMs = focusAsync.valueOrNull ?? 0;
+    final focusMs = focusAsync.value ?? 0;
     final journal = ref.watch(journalForDateProvider(key));
     final streak = ref.watch(journalStreakProvider);
     final target = settings?.dailyWeightTarget ?? 25;
@@ -504,7 +504,7 @@ class _FocusPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
-    final timer = ref.watch(timerProvider).valueOrNull;
+    final timer = ref.watch(timerProvider).value;
     final session = timer?.session;
     final active = session != null;
 

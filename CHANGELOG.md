@@ -4,6 +4,47 @@ All notable changes to Daymark are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 semantic versioning once it reaches a public release.
 
+## [1.2.0] - 2026-10-25
+
+### Added
+
+- One-tap Google Drive sign-in for official builds with build-time OAuth
+  credentials. Builds without credentials retain the guided self-hosted setup.
+- Build-time OAuth injection through `GOOGLE_OAUTH_CLIENT_ID` and
+  `GOOGLE_OAUTH_CLIENT_SECRET`, the `assets/config/google_oauth.json` asset, and
+  `tool/configure_google_oauth.dart`.
+- QR pairing, pairing links, and scan support in Nearby, plus a one-tap
+  **Sync now** action that exchanges ledgers in both directions.
+- Separate Nearby **Sync**, **Send**, **Inbox**, and **History** tabs.
+- A persistent 500-entry transfer history recording sent, received, restored,
+  journaled, and removed items, with direction filters and session-scoped code
+  memory.
+- Global sync entry points in the desktop sidebar, phone bottom bar, More sheet,
+  and command palette.
+- Runtime handling and platform guidance for camera, Android Nearby devices,
+  Android 17 local network access, iOS local network, and desktop firewall
+  permissions.
+- Android camera and local-network permissions, iOS/macOS camera usage strings,
+  and macOS camera entitlements.
+
+### Changed
+
+- Upgraded to Riverpod 3.4.3, with legacy `StateProvider` imports isolated to the
+  controllers that still use them.
+- Replaced `flutter_markdown` with `flutter_markdown_plus`.
+- Refreshed dependencies, including `qr_flutter`, `mobile_scanner`, and
+  `permission_handler`.
+- Google Drive setup copy now leads with **Continue with Google** when the build
+  has an embedded OAuth client.
+- Version is now `1.2.0+3`.
+
+### Fixed
+
+- macOS launches after the `AppDelegate` override fix.
+- Nearby permission failures now surface actionable guidance instead of a
+  generic connection error.
+- Google Drive credentials and tokens remain outside ledger backups.
+
 ## [1.1.0] - 2026-10-24
 
 ### Added

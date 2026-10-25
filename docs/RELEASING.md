@@ -6,14 +6,14 @@ manual "build on my laptop and hope" step.
 
 ## Trigger a release
 
-1. Update `version:` in `pubspec.yaml` (for example `1.1.0+2`).
+1. Update `version:` in `pubspec.yaml` (for example `1.2.0+3`).
 2. Move the relevant entries in `CHANGELOG.md` from `[Unreleased]` to the new
    version.
 3. Commit and push to `main`.
 4. Create and push an annotated tag:
 
    ```bash
-   git tag -a v1.1.0 -m "Daymark 1.1.0"
+   git tag -a v1.2.0 -m "Daymark 1.2.0"
    git push origin main --follow-tags
    ```
 
@@ -35,6 +35,34 @@ publish a release.
 
 You can also start a build manually from **Actions → Build & Release → Run
 workflow**. Manual runs produce artifacts but do not create a GitHub Release.
+
+## Google sign-in for official builds
+
+Official Daymark builds can show **Continue with Google** instead of guided
+OAuth setup. Add these repository secrets before building:
+
+| Secret | Value |
+| --- | --- |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google Cloud **Desktop app** OAuth client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Matching desktop client secret |
+
+Every quality and build job runs `tool/configure_google_oauth.dart`, which writes
+those values into `assets/config/google_oauth.json` before the Flutter build.
+The asset is bundled into the application. When the secrets are absent, the
+script writes an empty client and the app falls back to guided setup.
+
+Create the OAuth client in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+
+1. Enable the **Google Drive API**.
+2. Configure the OAuth consent screen. Add test users while the app is in
+   testing, or complete Google's verification for public distribution.
+3. Create an OAuth client of type **Desktop app**.
+4. Copy its client ID and secret into the GitHub secrets above.
+
+Desktop client secrets are not confidential in the same way as server secrets;
+Google expects them to ship with installed apps. They are still supplied through
+CI rather than hard-coded in the repository. Google's consent-screen and
+verification requirements are outside the workflow's control.
 
 ## Android release signing
 
@@ -68,7 +96,7 @@ The unsigned IPA can be signed by services such as Xcode, Transporter, or a
 sideloading tool. To sign it manually:
 
 ```bash
-unzip Daymark-1.1.0-ios-unsigned.ipa
+unzip Daymark-1.2.0-ios-unsigned.ipa
 codesign --force --sign "Apple Distribution: Your Team" \
   --entitlements Runner/Runner.entitlements \
   Payload/Runner.app
@@ -111,15 +139,15 @@ notarized production build.
 The portable tarball contains the Flutter bundle and can be launched with:
 
 ```bash
-tar -xzf Daymark-1.1.0-linux-x64.tar.gz
-./Daymark-1.1.0-linux-x64/daymark
+tar -xzf Daymark-1.2.0-linux-x64.tar.gz
+./Daymark-1.2.0-linux-x64/daymark
 ```
 
 The Debian package installs to `/usr/lib/daymark`, adds `/usr/bin/daymark`, and
 installs a desktop entry and icon under `/usr/share`. Install it with:
 
 ```bash
-sudo apt install ./Daymark-1.1.0-linux-amd64.deb
+sudo apt install ./Daymark-1.2.0-linux-amd64.deb
 ```
 
 The package declares dependencies on GTK 3, blkid, and SQLite. It targets x64
@@ -176,7 +204,7 @@ not move an existing tag: users and package mirrors may already have cached
 its artifacts.
 
 ```bash
-git tag -d v1.1.0
-git push origin :refs/tags/v1.1.0
-gh release delete v1.1.0 --yes
+git tag -d v1.2.0
+git push origin :refs/tags/v1.2.0
+gh release delete v1.2.0 --yes
 ```

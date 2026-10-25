@@ -35,7 +35,7 @@ class TasksController extends AsyncNotifier<List<TaskView>> {
     ];
   }
 
-  List<TaskView> get views => state.valueOrNull ?? const [];
+  List<TaskView> get views => state.value ?? const [];
 
   TaskView? byId(String id) {
     for (final view in views) {

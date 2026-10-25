@@ -48,7 +48,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final query = _query.text.trim().toLowerCase();
-    final tasks = (ref.watch(tasksProvider).valueOrNull ?? const <TaskView>[])
+    final tasks = (ref.watch(tasksProvider).value ?? const <TaskView>[])
         .where((view) => !view.task.archived)
         .where(
           (view) =>
@@ -57,7 +57,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
               (view.category?.name.toLowerCase().contains(query) ?? false),
         )
         .toList();
-    final settings = ref.watch(settingsProvider).valueOrNull;
+    final settings = ref.watch(settingsProvider).value;
 
     final actions =
         <_PaletteCommand>[
@@ -97,6 +97,12 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
               ref.read(selectedDateProvider.notifier).state = DateTime.now();
               _go(NavTarget.journal);
             },
+          ),
+          _PaletteCommand(
+            label: 'Sync with a nearby device',
+            hint: 'Pair by QR and exchange ledgers',
+            icon: Icons.sync_rounded,
+            run: () => _go(NavTarget.nearby),
           ),
           _PaletteCommand(
             label: 'Review insights',

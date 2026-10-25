@@ -87,6 +87,26 @@ void main() {
     });
   });
 
+  group('GoogleOAuthDefaults', () {
+    test('is only configured when both client values exist', () {
+      expect(GoogleOAuthDefaults.empty.configured, isFalse);
+      expect(
+        const GoogleOAuthDefaults(
+          clientId: 'client.apps.googleusercontent.com',
+          clientSecret: 'secret',
+        ).configured,
+        isTrue,
+      );
+      expect(
+        GoogleOAuthDefaults.fromJson({
+          'clientId': 'client',
+          'clientSecret': ' ',
+        }).configured,
+        isFalse,
+      );
+    });
+  });
+
   group('ReminderPreferences', () {
     test('round-trips every setting', () {
       const preferences = ReminderPreferences(

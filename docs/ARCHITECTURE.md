@@ -283,7 +283,7 @@ Starting any timer first stops the current one. The controller exposes `startFor
 
 - Stored raw in `tasks.notes_md` and `journal_entries.body_md`.
 - Editor: plain `TextField` with toolbar insertion helpers; no rich-text conversion, so round-trips are lossless.
-- Preview: `flutter_markdown` with a custom `MarkdownStyleSheet`; HTML is not enabled.
+- Preview: `flutter_markdown_plus` with a custom `MarkdownStyleSheet`; HTML is not enabled.
 - Autosave: 700 ms debounce on typing + flush on blur/route pop.
 - Export: raw markdown, with front-matter in file exports (`title`, `date`, `category`, `kind`, `points`).
 - Insert summary builds a checklist from completed tasks and a time table.
@@ -309,7 +309,7 @@ markdown/
   "format": "daymark.backup",
   "formatVersion": 1,
   "schemaVersion": 1,
-  "appVersion": "1.0.0",
+  "appVersion": "1.2.0",
   "exportedAt": 1761300000000,
   "checksum": "sha256(canonical backup payload)",
   "counts": {"tasks": 42, "timeEntries": 310},
@@ -349,7 +349,7 @@ Rules:
 
 ## 10. State management
 
-Riverpod 2.x. Key providers:
+Riverpod 3.4.3. Key providers:
 
 | Provider | Type | Responsibility |
 |---|---|---|
@@ -361,8 +361,8 @@ Riverpod 2.x. Key providers:
 | `journalForDateProvider` | `FutureProvider.family<Journal?>` | editor |
 | `timerProvider` | `AsyncNotifier<TimerState>` | active session, ticker, stopwatch ops |
 | `statsProvider` | `FutureProvider.family<StatsRange, DateRange>` | insights |
-| `selectedDateProvider` | `StateNotifier<DateTime>` | calendar + planner |
-| `navIndexProvider` | `StateNotifier<int>` | shell destination |
+| `selectedDateProvider` | `StateProvider<DateTime>` (legacy) | calendar + planner |
+| `navIndexProvider` | `StateProvider<int>` (legacy) | shell destination |
 
 Mutations call repositories, then invalidate affected providers. Local queries are fast enough that explicit invalidation is simpler and safer than streams. Optimistic checkbox toggles are allowed, with rollback on error.
 
@@ -370,13 +370,13 @@ Mutations call repositories, then invalidate affected providers. Local queries a
 
 ## 11. Testing strategy
 
-**Unit (pure):** weightage, duration formatting, date keys/ranges, timer math, markdown insertion helpers, backup validation/canonical JSON.
+**Unit (pure):** weightage, duration formatting, date keys/ranges, timer math, markdown insertion helpers, backup validation/canonical JSON, Google OAuth defaults, LAN pairing payloads, and transfer-history serialization.
 
 **Database (ffi in-memory / temp file):** CRUD, FK cascade, unique journal upsert, one-live-timer constraint, migration from empty and from v1 fixture, snapshot creation logic.
 
 **Backup:** export → file → import into a fresh DB → equality of row counts and key rows; tampered checksum rejected; unsupported version rejected; pre-restore snapshot created.
 
-**Widget:** app boots with demo data at 390×844, 820×1180, 1440×900; navigation across all five destinations; open task detail; toggle checklist; start/stop timer; open quick add; no exceptions/overflow.
+**Widget:** app boots with demo data at 390×844, 820×1180, 1440×900; navigation across the full shell; open task detail; toggle checklist; start/stop timer; open quick add; no exceptions/overflow.
 
 **Manual smoke:** Linux desktop on `:0` with screenshots in light and dark; Android emulator if available.
 
@@ -412,9 +412,24 @@ Makefile targets mirror these. Seed/demo data is available from Settings and emp
 
 ## 13. Security & privacy
 
-- No network permission required; no HTTP clients at runtime.
-- Backups are plain-text ZIPs (by design, portable and inspectable). UI states this clearly.
+- The ledger, backups, and journal never require an account or telemetry.
+- Google OAuth client values, refresh tokens, and notification preferences live in separate local files, never in ledger backups. Token files are written with owner-only permissions on Unix.
+- Nearby is opt-in per session, binds only to private/loopback/link-local addresses, and is guarded by a rotating six-digit code. **LAN payloads are not encrypted.**
+- The pairing QR contains the session code. The UI tells the user to show it only to their own device.
+- Backups are plain-text ZIPs (by design, portable and inspectable). The UI states this clearly.
 - Sensitive note content is never logged to console in release builds.
 - File paths come from `path_provider`, never from user text.
 - Import validates structure and caps array sizes/accepted file size to avoid memory abuse.
-- No secrets, tokens, or accounts exist in the app.
+- No server-side secret or shared cloud account is embedded. Google sign-in uses a Desktop-app OAuth client and the narrow `drive.file` scope.
+
+---
+
+## 14. Nearby LAN protocol
+
+- **Discovery:** UDP broadcast on port `45913`; peers exchange an id, display name, platform, and HTTP port. Discovery never leaves the local network.
+- **Transport:** a short-lived `HttpServer` on a random port. Private, loopback, and link-local targets only. No TLS.
+- **Pairing:** six random digits generated with `Random.secure()` on each Nearby session. A QR or paste link encodes `daymark://pair?host=…&port=…&pin=…&name=…&id=…`. Pairing remembers the code in memory until the page goes offline; it is not persisted.
+- **Endpoints:** `GET /v1/info`, `GET /v1/snapshot`, `POST /v1/snapshot`, `POST /v1/text`, and `POST /v1/file`, all PIN-guarded and capped at 100 MB.
+- **Inbox:** received notes, files, and snapshots are written under `getApplicationSupportDirectory()/nearby/`. A snapshot is never applied automatically; restore validates the archive and writes a pre-restore safety copy first.
+- **History:** `history.json` keeps the newest 500 events with direction, kind, title, peer, timestamp, status, item id, and size. Statuses move from `received` to `restored`, `journaled`, or `removed`.
+- **Sync now:** sends the local snapshot, then pulls the peer snapshot in one user action. Each side sees the other side's backup in its inbox.

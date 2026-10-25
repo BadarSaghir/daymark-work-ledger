@@ -48,7 +48,7 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     final category = view.category;
     final active = ref.watch(
       timerProvider.select((value) {
-        final session = value.valueOrNull?.session;
+        final session = value.value?.session;
         if (session == null || session.taskId != task.id) {
           return (false, false);
         }
@@ -404,7 +404,7 @@ class TaskTimeText extends ConsumerWidget {
     final colors = context.colors;
     final liveMs = ref.watch(
       timerProvider.select((value) {
-        final current = value.valueOrNull;
+        final current = value.value;
         final session = current?.session;
         if (session == null || session.taskId != view.task.id) return 0;
         return session.elapsedAt(current!.now).inMilliseconds;
