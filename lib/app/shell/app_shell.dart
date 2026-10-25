@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,7 @@ import '../../state/repository_providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/tasks_controller.dart';
 import '../../state/timer_controller.dart';
+import '../../state/notification_controller.dart';
 import '../../state/ui_state.dart';
 import '../../widgets/quick_capture.dart';
 import '../../widgets/task_editor.dart';
@@ -37,10 +40,45 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
+  Timer? _reminderDebounce;
+  ProviderSubscription<AsyncValue<List<TaskView>>>? _taskSubscription;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoBackup());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoBackup();
+      _syncReminders();
+    });
+    _taskSubscription = ref.listenManual(tasksProvider, (previous, next) {
+      if (next.hasValue) _queueReminderSync();
+    });
+  }
+
+  @override
+  void dispose() {
+    _reminderDebounce?.cancel();
+    _taskSubscription?.close();
+    super.dispose();
+  }
+
+  void _queueReminderSync() {
+    if (!ref.read(remindersEnabledProvider)) return;
+    final preferences = ref.read(reminderControllerProvider).valueOrNull;
+    if (preferences?.enabled != true) return;
+    _reminderDebounce?.cancel();
+    _reminderDebounce = Timer(const Duration(seconds: 2), _syncReminders);
+  }
+
+  Future<void> _syncReminders() async {
+    if (!ref.read(remindersEnabledProvider)) return;
+    try {
+      final preferences = await ref.read(reminderControllerProvider.future);
+      if (!preferences.enabled) return;
+      await ref.read(reminderControllerProvider.notifier).syncNow();
+    } catch (_) {
+      // Reminder support is optional and must never break the workspace.
+    }
   }
 
   Future<void> _autoBackup() async {
@@ -52,6 +90,18 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (result?.file != null) {
         await ref.read(settingsProvider.notifier).markBackupAt(DateTime.now());
         ref.invalidate(backupListProvider);
+      }
+      final drive = await ref.read(googleDriveServiceProvider.future);
+      final config = await drive.loadConfig();
+      if (config.autoUpload && config.hasAccount) {
+        if (result?.file != null) {
+          await drive.uploadBackup(
+            result!.file!,
+            accountId: config.activeAccountId,
+          );
+        } else {
+          await drive.autoUploadIfDue();
+        }
       }
     } catch (_) {
       // A failed automatic backup must never interrupt the workspace.

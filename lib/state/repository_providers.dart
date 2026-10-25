@@ -13,6 +13,8 @@ import '../data/repositories/task_repository.dart';
 import '../data/repositories/timer_repository.dart';
 import '../data/services/backup_service.dart';
 import '../data/services/demo_service.dart';
+import '../data/services/google_drive_service.dart';
+import '../data/services/notification_service.dart';
 
 /// Overridden in `main()` after the database has opened, and in tests with an
 /// in-memory database.
@@ -57,3 +59,48 @@ final backupServiceProvider = FutureProvider<BackupService>((ref) async {
   final directory = await ref.watch(backupDirectoryProvider.future);
   return BackupService(ref.watch(databaseProvider), backupDirectory: directory);
 });
+
+final googleDriveServiceProvider = FutureProvider<GoogleDriveService>((
+  ref,
+) async {
+  final backup = await ref.watch(backupServiceProvider.future);
+  final service = GoogleDriveService(
+    backupService: backup,
+    configDirectory: Directory(
+      p.join(backup.backupDirectory.parent.path, 'cloud'),
+    ),
+  );
+  ref.onDispose(service.close);
+  return service;
+});
+
+final googleDriveConfigProvider = FutureProvider<GoogleDriveConfig>((
+  ref,
+) async {
+  final service = await ref.watch(googleDriveServiceProvider.future);
+  return service.loadConfig();
+});
+
+final googleDriveBackupsProvider = FutureProvider<List<CloudBackupFile>>((
+  ref,
+) async {
+  final config = await ref.watch(googleDriveConfigProvider.future);
+  if (!config.hasAccount) return const [];
+  final service = await ref.watch(googleDriveServiceProvider.future);
+  return service.listBackups(accountId: config.activeAccountId);
+});
+
+final notificationServiceProvider = FutureProvider<NotificationService>((
+  ref,
+) async {
+  final backup = await ref.watch(backupServiceProvider.future);
+  return NotificationService(
+    configDirectory: Directory(
+      p.join(backup.backupDirectory.parent.path, 'config'),
+    ),
+  );
+});
+
+/// Disabled in widget tests, where the platform notification channel does not
+/// exist. The app shell checks this before touching the plugin.
+final remindersEnabledProvider = Provider<bool>((ref) => true);

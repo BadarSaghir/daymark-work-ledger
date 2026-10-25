@@ -51,6 +51,7 @@ void main() {
           backupDirectoryProvider.overrideWith(
             (ref) async => Directory(p.join(temp.path, 'backups')),
           ),
+          remindersEnabledProvider.overrideWithValue(false),
         ],
         child: const DaymarkApp(),
       ),

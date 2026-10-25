@@ -10,7 +10,6 @@ import 'package:daymark/data/repositories/settings_repository.dart';
 import 'package:daymark/data/repositories/task_repository.dart';
 import 'package:daymark/data/models/enums.dart';
 import 'package:daymark/data/services/backup_service.dart';
-import 'package:daymark/core/utils/canonical_json.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';

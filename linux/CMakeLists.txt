@@ -126,3 +126,11 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Desktop entry and icon for system packaging. When the default bundle prefix
+# is used these land inside the bundle; a distribution build with
+# -DCMAKE_INSTALL_PREFIX=/usr installs them in the normal XDG locations.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/daymark.desktop"
+  DESTINATION "share/applications" COMPONENT Runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/daymark.png"
+  DESTINATION "share/icons/hicolor/256x256/apps" COMPONENT Runtime)

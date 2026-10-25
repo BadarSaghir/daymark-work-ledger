@@ -29,6 +29,8 @@ import '../../state/settings_controller.dart';
 import '../../state/stats_providers.dart';
 import '../../state/tasks_controller.dart';
 import '../../state/timer_controller.dart';
+import 'google_drive_card.dart';
+import 'reminders_card.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -404,6 +406,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
 
+    const drive = GoogleDriveCard();
+    const reminders = RemindersCard();
+
     final data = _SettingsCard(
       title: 'Data',
       subtitle: 'Demo content for exploring; a clean reset for a new season.',
@@ -528,6 +533,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       children: [
                         backup,
                         const SizedBox(height: AppSpace.lg),
+                        drive,
+                        const SizedBox(height: AppSpace.lg),
+                        reminders,
+                        const SizedBox(height: AppSpace.lg),
                         data,
                         const SizedBox(height: AppSpace.lg),
                         about,
@@ -546,6 +555,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   appearance,
                   const SizedBox(height: AppSpace.lg),
                   backup,
+                  const SizedBox(height: AppSpace.lg),
+                  drive,
+                  const SizedBox(height: AppSpace.lg),
+                  reminders,
                   const SizedBox(height: AppSpace.lg),
                   data,
                   const SizedBox(height: AppSpace.lg),

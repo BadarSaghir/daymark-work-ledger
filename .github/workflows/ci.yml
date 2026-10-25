@@ -1,4 +1,4 @@
-name: CI
+name: Build & Release
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: daymark-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -39,13 +39,17 @@ jobs:
         run: flutter test --reporter expanded
 
   linux:
-    name: Linux desktop
+    name: Linux x64 package
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     needs: quality
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libblkid-dev
+      - name: Install desktop toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev libblkid-dev libsqlite3-dev
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -53,18 +57,93 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build linux --release
-      - name: Package bundle
-        run: tar -czf daymark-linux-x64.tar.gz -C build/linux/x64/release bundle
+      - name: Package portable bundle and Debian package
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          mkdir -p release dist
+
+          STAGE="dist/Daymark-${VERSION}-linux-x64"
+          mkdir -p "$STAGE"
+          cp -R build/linux/x64/release/bundle/. "$STAGE/"
+          cp README.md LICENSE CHANGELOG.md "$STAGE/"
+          tar -C dist -czf "release/Daymark-${VERSION}-linux-x64.tar.gz" "Daymark-${VERSION}-linux-x64"
+
+          PKG="dist/debian"
+          rm -rf "$PKG"
+          mkdir -p "$PKG/DEBIAN" \
+            "$PKG/usr/lib/daymark" \
+            "$PKG/usr/bin" \
+            "$PKG/usr/share/applications" \
+            "$PKG/usr/share/icons/hicolor/256x256/apps" \
+            "$PKG/usr/share/doc/daymark"
+          cp -R build/linux/x64/release/bundle/. "$PKG/usr/lib/daymark/"
+          ln -s /usr/lib/daymark/daymark "$PKG/usr/bin/daymark"
+          cp linux/daymark.desktop "$PKG/usr/share/applications/daymark.desktop"
+          cp linux/assets/daymark.png "$PKG/usr/share/icons/hicolor/256x256/apps/daymark.png"
+          cp README.md LICENSE CHANGELOG.md "$PKG/usr/share/doc/daymark/"
+          cat > "$PKG/DEBIAN/control" <<EOF
+          Package: daymark
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Sardar Badar Saghir <60216738+BadarSaghir@users.noreply.github.com>
+          Homepage: https://github.com/BadarSaghir/daymark-work-ledger
+          Depends: libgtk-3-0 | libgtk-3-0t64, libblkid1, libsqlite3-0
+          Description: Private offline work ledger
+           Daymark is a local-first planner, timer, journal, and backup tool.
+           It stores every task and note in SQLite on your own device, supports
+           optional LAN transfer, and works completely offline.
+          EOF
+          dpkg-deb --build --root-owner-group "$PKG" \
+            "release/Daymark-${VERSION}-linux-amd64.deb"
+          ls -lh release
       - uses: actions/upload-artifact@v4
         with:
-          name: daymark-linux-x64
-          path: daymark-linux-x64.tar.gz
+          name: daymark-linux
+          path: release/*
           if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows x64 package
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package portable build
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version: ([^+]+)').Matches[0].Groups[1].Value
+          $stage = "dist/Daymark-$version-windows-x64"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Copy-Item -Path "build/windows/x64/runner/Release/*" -Destination $stage -Recurse -Force
+          Copy-Item README.md, LICENSE, CHANGELOG.md -Destination $stage
+          Compress-Archive -Path $stage -DestinationPath "release/Daymark-$version-windows-x64.zip" -Force
+          Get-ChildItem release | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daymark-windows
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
 
   android:
-    name: Android APK
+    name: Android APK + AAB
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     needs: quality
     steps:
       - uses: actions/checkout@v4
@@ -78,17 +157,53 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure optional release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/daymark-release.jks
+            cat > android/key.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=daymark-release.jks
+          EOF
+            echo "Release signing configured from repository secrets."
+          else
+            echo "No keystore secrets found; Gradle will use the debug signing config."
+          fi
       - run: flutter build apk --release
+      - run: flutter build appbundle --release
+      - name: Collect Android artifacts
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          mkdir -p release
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "release/Daymark-${VERSION}-android.apk"
+          cp build/app/outputs/bundle/release/app-release.aab \
+            "release/Daymark-${VERSION}-android.aab"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "release/Daymark-${VERSION}-android.apk" || true
+          fi
+          ls -lh release
       - uses: actions/upload-artifact@v4
         with:
-          name: daymark-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: daymark-android
+          path: release/*
           if-no-files-found: error
+          retention-days: 14
 
   ios:
-    name: iOS unsigned build
+    name: iOS unsigned IPA
+    if: github.event_name != 'pull_request'
     runs-on: macos-14
-    timeout-minutes: 35
+    timeout-minutes: 45
     needs: quality
     steps:
       - uses: actions/checkout@v4
@@ -98,33 +213,120 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build ios --release --no-codesign
-      - name: Package app
+      - name: Build without code signing
+        run: flutter build ios --release --no-codesign
+      - name: Package unsigned IPA
         run: |
-          cd build/ios/iphoneos
-          zip -r daymark-ios-unsigned.zip Runner.app
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          mkdir -p release build/ios/unsigned/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/unsigned/Payload/
+          cd build/ios/unsigned
+          zip -qry "$GITHUB_WORKSPACE/release/Daymark-${VERSION}-ios-unsigned.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/release"
       - uses: actions/upload-artifact@v4
         with:
-          name: daymark-ios-unsigned
-          path: build/ios/iphoneos/daymark-ios-unsigned.zip
+          name: daymark-ios
+          path: release/*
           if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS DMG
+    if: github.event_name != 'pull_request'
+    runs-on: macos-14
+    timeout-minutes: 40
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Sign ad hoc, package ZIP and DMG
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          ARCH="$(uname -m)"
+          APP="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          if [ -z "$APP" ]; then
+            echo "No macOS app bundle was produced." >&2
+            exit 1
+          fi
+          mkdir -p release dist/dmg
+          codesign --force --deep --sign - "$APP"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" \
+            "release/Daymark-${VERSION}-macos-${ARCH}.zip"
+          cp -R "$APP" "dist/dmg/Daymark.app"
+          ln -s /Applications "dist/dmg/Applications"
+          hdiutil create -volname "Daymark ${VERSION}" -srcfolder dist/dmg \
+            -ov -format UDZO "release/Daymark-${VERSION}-macos-${ARCH}.dmg"
+          ls -lh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daymark-macos
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
 
   release:
-    name: Publish tagged release
+    name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [linux, android, ios]
+    timeout-minutes: 15
+    needs: [linux, windows, android, ios, macos]
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: Flatten artifacts
+          path: release
+          merge-multiple: true
+      - name: Generate checksums
         run: |
-          mkdir -p release
-          find artifacts -type f -exec cp {} release/ \;
-          ls -lh release
+          set -euo pipefail
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
+          name: Daymark ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          generate_release_notes: false
           files: release/*
-          generate_release_notes: true
+          body: |
+            **Every effort, marked.**
+
+            Daymark is a private, offline-first work ledger. This release
+            contains builds for every supported platform. All data stays in a
+            local SQLite database; Google Drive backup and LAN transfer are
+            optional.
+
+            | Platform | File | Notes |
+            | --- | --- | --- |
+            | Linux x64 | `*.tar.gz`, `*.deb` | Portable bundle or Debian/Ubuntu package. |
+            | Windows x64 | `*.zip` | Portable application folder. |
+            | Android | `*.apk`, `*.aab` | APK for sideloading; AAB for stores. |
+            | iOS | `*-ios-unsigned.ipa` | Unsigned; sign with your Apple team before installing on a device. |
+            | macOS | `*.dmg`, `*.zip` | DMG or zipped app bundle. Architecture is in the filename. |
+
+            Verify downloads with `SHA256SUMS.txt`.
+
+            ### Apple notes
+
+            Apple builds in this release are **unsigned**. iOS requires a
+            development or distribution certificate and provisioning profile;
+            macOS is ad-hoc signed, so Gatekeeper may ask you to right-click
+            Open. Signing and notarization secrets are documented in
+            `docs/RELEASING.md`.
+
+            ### Android notes
+
+            If the Android signing secrets are configured, the APK and AAB are
+            signed with the project release key. Otherwise they use the debug
+            key and are intended for testing and sideloading only. Check the
+            certificate with `apksigner verify --print-certs`.
+
+            See `CHANGELOG.md` for what changed.
