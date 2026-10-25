@@ -196,9 +196,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
           files: [XFile(file.path, mimeType: 'application/zip')],
           subject: 'Daymark task · ${export.title}',
           text:
-              'Daymark task bundle with notes, steps, tracked time, and '
-              '${export.attachmentCount} file(s). Import it from Nearby → '
-              'Received here.',
+              'Daymark task bundle with notes, steps, tracked time, reminders, '
+              'and ${export.attachmentCount} file(s). Import it from Settings → '
+              'Backup & portability → Import task bundle.',
           sharePositionOrigin: box == null
               ? null
               : box.localToGlobal(Offset.zero) & box.size,
@@ -207,7 +207,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       if (mounted) {
         showToast(
           context,
-          'Task bundle ready. Open it on the other device from Nearby.',
+          'Task bundle ready. The other device can import it from Settings → '
+          'Backup & portability.',
+          duration: const Duration(seconds: 4),
         );
       }
     } catch (error) {
@@ -482,8 +484,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       context,
       title: 'Delete this task?',
       message:
-          'This removes the task, its steps, and its activity trail. Tracked '
-          'time is kept but becomes unassigned. This cannot be undone.',
+          'This removes the task, its steps, attached files, and its activity '
+          'trail. Tracked time is kept but becomes unassigned. This cannot be '
+          'undone.',
       confirmLabel: 'Delete',
       danger: true,
       icon: Icons.delete_outline_rounded,

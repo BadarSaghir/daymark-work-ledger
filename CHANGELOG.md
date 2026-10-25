@@ -4,6 +4,50 @@ All notable changes to Daymark are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 semantic versioning once it reaches a public release.
 
+## [1.3.0] - 2026-10-25
+
+### Added
+
+- Single-task bundles (`.daymark-task`) that carry a task's markdown notes,
+  steps, tracked time, activity trail, category, reminders, and attachment
+  files. Export from task detail, send over Nearby, or import from **Settings →
+  Backup & portability**. Re-importing updates the same task instead of making a
+  duplicate; time entries are additive and a newer local copy is preserved.
+- Per-task file attachments with a searchable task picker. Files are stored
+  beside the active profile, shown on task detail with open/share/remove
+  actions, and included in backups and task bundles. Limits are 50 MB per file
+  and 90 MB per task.
+- Custom per-task reminders with an exact local date, time, and optional note,
+  in addition to start and deadline reminders.
+- Booked-hours occupancy on the calendar: month tiles show busy time, weekly
+  rows show a compact total, and a day timeline lists every scheduled window
+  with its task, category, and duration. Overlapping work is counted once.
+- Learning, admin, and creative work kinds, each with its own weight
+  multiplier, icon, and colour.
+- Markdown mirrors in backups now list task attachments, and task bundles
+  include reminder and deadline metadata in their readable markdown file.
+
+### Changed
+
+- Backups now include attachment metadata and the attachment file tree.
+  Restore removes stale files safely and validates every relative path.
+- Deleting a task or resetting a workspace removes its attachment files as well
+  as its database rows.
+- Nearby task sharing uses the existing paired-device flow, adding the bundle
+  to the receiver's Inbox for an explicit import.
+- Linux reminders now include an in-app 20-second due-reminder pulse because
+  the Linux notification plugin cannot schedule; Windows, Android, iOS, and
+  macOS continue to use native scheduled notifications.
+- Version is now `1.3.0+4`.
+
+### Fixed
+
+- Windows CI builds `permission_handler_windows` with the experimental
+  coroutine compatibility define required by current MSVC toolchains.
+- Android CI discovers the installed `sdkmanager`, accepts licenses, and
+  installs the API 37 platform and build tools without the failing setup
+  action.
+
 ## [1.2.0] - 2026-10-25
 
 ### Added

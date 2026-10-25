@@ -29,8 +29,13 @@ class TaskAttachmentService {
   Future<List<TaskAttachment>> listForTask(String taskId) =>
       _repository.listForTask(taskId);
 
-  File fileFor(TaskAttachment attachment) =>
-      File(p.join(directory.path, attachment.relativePath));
+  File fileFor(TaskAttachment attachment) {
+    final relative = _safeRelativePath(attachment.relativePath);
+    if (relative == null) {
+      throw TaskAttachmentException('That attachment path is not valid.');
+    }
+    return File(p.join(directory.path, relative));
+  }
 
   Future<TaskAttachment> addFile(
     String taskId,
@@ -96,6 +101,50 @@ class TaskAttachmentService {
     } catch (_) {
       // A locked/missing file must not resurrect the metadata row.
     }
+  }
+
+  /// Removes the whole attachment folder for a deleted task. Metadata rows are
+  /// already removed by the task's foreign-key cascade.
+  Future<void> deleteTaskFiles(String taskId) async {
+    if (taskId.contains('/') ||
+        taskId.contains('\\') ||
+        taskId == '.' ||
+        taskId == '..') {
+      return;
+    }
+    try {
+      final folder = Directory(p.join(directory.path, taskId));
+      if (await folder.exists()) await folder.delete(recursive: true);
+    } catch (_) {
+      // A locked file should not undo the task deletion.
+    }
+  }
+
+  /// Clears every attachment file for the active profile. Used by workspace
+  /// reset after the database rows have been removed.
+  Future<void> deleteAllFiles() async {
+    try {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    } catch (_) {
+      // Best effort; orphaned files cannot break the ledger.
+    }
+  }
+
+  static String? _safeRelativePath(String raw) {
+    final normalized = raw.trim().replaceAll('\\', '/');
+    if (normalized.isEmpty ||
+        normalized.startsWith('/') ||
+        p.isAbsolute(normalized) ||
+        p.windows.isAbsolute(normalized)) {
+      return null;
+    }
+    final parts = normalized.split('/');
+    if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
+      return null;
+    }
+    return p.joinAll(parts);
   }
 
   static String _safeFileName(String name) {

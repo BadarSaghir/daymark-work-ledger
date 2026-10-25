@@ -180,6 +180,12 @@ class TasksController extends AsyncNotifier<List<TaskView>> {
 
   Future<void> deleteTask(TaskView view) async {
     await ref.read(taskRepositoryProvider).deleteTask(view.task.id);
+    try {
+      final attachments = await ref.read(taskAttachmentServiceProvider.future);
+      await attachments.deleteTaskFiles(view.task.id);
+    } catch (_) {
+      // The task row is already gone; orphaned files must not block the UI.
+    }
     await refresh();
   }
 }

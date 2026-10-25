@@ -151,15 +151,18 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
       helpText: 'Remind me at…',
     );
     if (time == null) return;
-    setState(() {
-      _reminderAt = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      );
-    });
+    final picked = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    if (!picked.isAfter(DateTime.now())) {
+      if (mounted) showToast(context, 'Choose a future date and time.');
+      return;
+    }
+    setState(() => _reminderAt = picked);
   }
 
   Future<void> _pickTime({required bool start}) async {

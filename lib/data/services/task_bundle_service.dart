@@ -207,8 +207,10 @@ class TaskBundleService {
     var attachmentBytes = 0;
     for (final row in attachmentRows) {
       final meta = Map<String, Object?>.from(row);
-      final relative = (row['relative_path'] as String? ?? '').trim();
-      if (relative.isEmpty) continue;
+      final relative = _safeRelativePath(
+        (row['relative_path'] as String? ?? '').trim(),
+      );
+      if (relative == null) continue;
       final file = File(p.join(attachmentDirectory.path, relative));
       if (await file.exists()) {
         final size = await file.length();
@@ -360,6 +362,9 @@ class TaskBundleService {
     if (taskId.isEmpty || title.isEmpty) {
       throw TaskBundleException('The shared task has no id or title.');
     }
+    if (!_isSafeId(taskId)) {
+      throw TaskBundleException('The shared task has an invalid id.');
+    }
 
     final categoryRaw = envelope['category'];
     final incomingCategory = categoryRaw is Map
@@ -477,7 +482,9 @@ class TaskBundleService {
         final bytes = files[archivePath];
         if (bytes == null) continue;
         var id = meta['id']?.toString() ?? '';
-        if (id.isEmpty || !await _attachmentIdIsFree(txn, id, taskId)) {
+        if (id.isEmpty ||
+            !_isSafeId(id) ||
+            !await _attachmentIdIsFree(txn, id, taskId)) {
           id = newId();
         }
         final relative = p.join(taskId, '$id-${_safeFileName(name)}');
@@ -675,12 +682,42 @@ class TaskBundleService {
     archive.addFile(ArchiveFile(name, bytes.length, bytes));
   }
 
+  static bool _isSafeId(String id) {
+    if (id.isEmpty || id.length > 160 || id != id.trim()) return false;
+    if (id == '.' || id == '..') return false;
+    return !id.contains('/') &&
+        !id.contains('\\') &&
+        !id.contains('\u0000') &&
+        !id.contains(':');
+  }
+
+  static String? _safeRelativePath(String raw) {
+    final normalized = raw.trim().replaceAll('\\', '/');
+    if (normalized.isEmpty ||
+        normalized.startsWith('/') ||
+        p.isAbsolute(normalized) ||
+        p.windows.isAbsolute(normalized)) {
+      return null;
+    }
+    final parts = normalized.split('/');
+    if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
+      return null;
+    }
+    return p.joinAll(parts);
+  }
+
   static String _archivePath(String relative) {
     final parts = p
         .split(relative)
         .map((part) => part.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_'))
         .toList();
     return p.posix.joinAll(['attachments', ...parts]);
+  }
+
+  static String _isoFromMs(Object? value) {
+    final ms = (value as num?)?.toInt();
+    if (ms == null || ms <= 0) return '';
+    return DateTime.fromMillisecondsSinceEpoch(ms).toLocal().toIso8601String();
   }
 
   static String _safeFileName(String name) {
@@ -723,6 +760,8 @@ class TaskBundleService {
       ..writeln('priority: ${task['priority']}')
       ..writeln('effort: ${task['effort']}')
       ..writeln('planned: ${task['planned_date'] ?? ''}')
+      ..writeln('due: ${_isoFromMs(task['due_at'])}')
+      ..writeln('reminder: ${_isoFromMs(task['reminder_at'])}')
       ..writeln('---')
       ..writeln()
       ..writeln('# $title')
@@ -731,6 +770,13 @@ class TaskBundleService {
     if (notes.isNotEmpty) {
       buffer
         ..writeln(notes)
+        ..writeln();
+    }
+    final reminderNote = task['reminder_note']?.toString().trim() ?? '';
+    if (reminderNote.isNotEmpty) {
+      buffer
+        ..writeln('## Reminder')
+        ..writeln(reminderNote)
         ..writeln();
     }
     if (subtasks.isNotEmpty) {

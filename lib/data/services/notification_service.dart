@@ -93,7 +93,6 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
-  bool? _nativeSchedulingSupported;
   int _linuxFallbackCount = 0;
   final Set<String> _firedFallbackReminders = <String>{};
 

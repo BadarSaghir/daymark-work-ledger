@@ -59,6 +59,8 @@ void main() {
         status: TaskStatus.planned,
         plannedDate: '2026-10-24',
         notesMd: 'Keep **the promise** small.',
+        reminderAt: DateTime(2026, 10, 24, 9, 30),
+        reminderNote: 'Bring the outline.',
       );
       await tasks.createNew(title: 'Inbox thought', notesMd: 'One line.');
 
@@ -81,6 +83,12 @@ void main() {
       ) as Map<String, dynamic>;
       final checksum = backupJson['checksum'];
       expect(checksum, isNotNull);
+      final tasksJson = backupJson['data'] as Map<String, dynamic>;
+      final draft = (tasksJson['tasks'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((task) => task['title'] == 'Draft the brief');
+      expect(draft['reminder_at'], isNotNull);
+      expect(draft['reminder_note'], 'Bring the outline.');
       backupJson.remove('checksum');
       expect(BackupService.checksumFor(backupJson), checksum);
     },

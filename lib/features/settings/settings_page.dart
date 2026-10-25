@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
+import '../../app/routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/feedback.dart';
@@ -206,8 +207,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final backup = _SettingsCard(
       title: 'Backup & portability',
       subtitle:
-          'A ZIP archive with every table, a checksum, and markdown mirrors of '
-          'your notes. Yours to keep.',
+          'A ZIP archive with every table, a checksum, markdown mirrors, and '
+          'task attachments. Import a backup or one shared task bundle here.',
       icon: Icons.shield_outlined,
       trailing: _busy && _busyLabel != null
           ? Row(
@@ -254,7 +255,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               OutlinedButton.icon(
                 onPressed: _busy ? null : _importBackup,
                 icon: const Icon(Icons.file_open_outlined, size: 17),
-                label: const Text('Import'),
+                label: const Text('Import backup'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _importTaskBundle,
+                icon: const Icon(Icons.task_alt_rounded, size: 17),
+                label: const Text('Import task bundle'),
               ),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _exportMarkdown,
@@ -469,7 +475,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       icon: Icons.info_outline_rounded,
       child: Column(
         children: [
-          _AboutRow(label: 'Version', value: '1.2.0'),
+          _AboutRow(label: 'Version', value: '1.3.0'),
           _AboutRow(label: 'Schema', value: 'v${Migrations.latestVersion}'),
           _AboutRow(
             label: 'Backup format',
@@ -668,6 +674,56 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Future<void> _importTaskBundle() async {
+    const typeGroup = XTypeGroup(
+      label: 'Daymark task bundle',
+      extensions: ['daymark-task', 'zip'],
+    );
+    XFile? file;
+    try {
+      file = await openFile(acceptedTypeGroups: [typeGroup]);
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not open the file picker: $error');
+      return;
+    }
+    if (file == null || !mounted) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Import this task?',
+      message:
+          '${p.basename(file.path)} brings one task with its notes, steps, '
+          'tracked time, reminders, and files. If that task already exists, '
+          'Daymark updates it when the incoming copy is newer. Nothing else in '
+          'your ledger is replaced.',
+      confirmLabel: 'Import task',
+      icon: Icons.task_alt_rounded,
+    );
+    if (!confirmed) return;
+    final service = await ref.read(taskBundleServiceProvider.future);
+    final result = await _withBusy(
+      'Importing task…',
+      () => service.importFile(File(file!.path)),
+    );
+    if (result == null) return;
+    await _refreshEverything();
+    if (!mounted) return;
+    if (result.keptLocal) {
+      showToast(
+        context,
+        'Your local copy of “${result.title}” is newer, so it was kept.',
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+    showToast(
+      context,
+      result.isNew
+          ? '“${result.title}” imported as a new task.'
+          : '“${result.title}” updated on this device.',
+    );
+    await openTaskDetail(context, result.taskId);
+  }
+
   Future<void> _restoreBackup(BackupInfo info) async {
     final confirmed = await showConfirmDialog(
       context,
@@ -735,6 +791,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (!confirmed) return;
     final loaded = await _withBusy<bool>('Loading demo…', () async {
       await ref.read(demoServiceProvider).load();
+      final attachments = await ref.read(taskAttachmentServiceProvider.future);
+      await attachments.deleteAllFiles();
       return true;
     });
     if (loaded != true) return;
@@ -747,8 +805,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       context,
       title: 'Reset the workspace?',
       message:
-          'This removes all tasks, steps, time entries, journals, and activity. '
-          'Categories and backup files are kept. You will return to setup.',
+          'This removes all tasks, steps, attached files, time entries, '
+          'journals, and activity. Categories and backup files are kept. You '
+          'will return to setup.',
       confirmLabel: 'Erase data',
       danger: true,
       icon: Icons.restart_alt_rounded,
@@ -771,6 +830,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       });
+      final attachments = await ref.read(taskAttachmentServiceProvider.future);
+      await attachments.deleteAllFiles();
       return true;
     });
     if (done != true) return;

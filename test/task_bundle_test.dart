@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:daymark/data/db/app_database.dart';
@@ -198,6 +199,33 @@ void main() {
       );
     },
   );
+
+  test('rejects an unsafe task id before writing any attachment', () async {
+    final envelope = {
+      'format': TaskBundleService.format,
+      'formatVersion': TaskBundleService.formatVersion,
+      'schemaVersion': 2,
+      'appVersion': 'test',
+      'task': {
+        'id': '../escape',
+        'title': 'Unsafe',
+        'notes_md': '',
+        'created_at': 1,
+        'updated_at': 1,
+      },
+      'category': null,
+      'subtasks': <Object?>[],
+      'time_entries': <Object?>[],
+      'activity_events': <Object?>[],
+      'task_attachments': <Object?>[],
+    };
+    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(envelope)));
+    await expectLater(
+      targetBundles.importBytes(bytes),
+      throwsA(isA<TaskBundleException>()),
+    );
+    expect(await Directory(p.join(temp.path, 'escape')).exists(), isFalse);
+  });
 
   test('backups include task attachments and restore their bytes', () async {
     final tasks = TaskRepository(source);

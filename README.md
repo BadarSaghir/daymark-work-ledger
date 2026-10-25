@@ -26,6 +26,7 @@ Most tools ask you to choose between a rigid project manager and a blank notes a
 - **Choose your second copy.** Mirror backups into your own Google Drive folder with one-tap Google sign-in in official builds, or use your own OAuth client when self-hosting.
 - **Move between your own devices.** Nearby syncs ledgers, notes, and files directly over the LAN with QR pairing. No relay, no cloud copy.
 - **Remember without a server.** Task starts, deadlines, and a daily closing note are scheduled as offline OS notifications.
+- **Send one task, not the whole ledger.** A `.daymark-task` bundle carries the notes, steps, tracked time, reminders, and files for a single task, so two devices can work on it while it is in motion.
 - **Share a device without sharing a ledger.** Local accounts keep separate work, backups, and Google Drive links, with a remembered account picker and a real sign-out gate.
 
 ## Features
@@ -35,16 +36,16 @@ Most tools ask you to choose between a rigid project manager and a blank notes a
 | **Today** | A calm dashboard with today's plan, inbox, overdue work, focus target, and a quick capture shortcut. |
 | **Local accounts** | Multiple offline profiles with separate SQLite ledgers, backups, reminders, Nearby history, and Google Drive links. Accounts are remembered for one-tap switching; **Sign out** returns to the account picker without deleting anything. |
 | **Planner** | Plan by day or week, schedule blocks, and move work without losing its history. |
-| **Task detail** | Markdown notes, subtasks with progress, scheduling, estimates, priority, effort, work kind, and a complete activity trail. |
+| **Task detail** | Markdown notes, subtasks with progress, scheduling, estimates, custom reminders, priority, effort, work kind, file attachments, a complete activity trail, and single-task bundle sharing. |
 | **Timers** | One live session at a time; start, pause, resume, stop, recover after a crash, and accumulate exact segments. A general stopwatch sits beside per-task timing. |
-| **Calendar** | A month view with planned load, completed work, and day drill-down. |
+| **Calendar** | Month and week views with planned load, booked-hour occupancy, scheduled windows, completed work, and day drill-down. |
 | **Journal** | One markdown entry per day, mood and energy, streaks, search, and date navigation. |
 | **Insights** | Trends, focus totals, estimate accuracy, a 12-week focus heatmap, and category distribution. |
 | **Categories** | Colour, icon, weight (0.5–2.0), archive, and safe deletion. Search plus paginated category lists and a shared searchable picker keep hundreds of categories usable on phones. |
-| **Backups** | Manual or daily automatic backups, retention, import validation, pre-restore safety copies, and portable markdown mirrors. |
+| **Backups** | Manual or daily automatic backups, retention, import validation, pre-restore safety copies, attachment files, and portable markdown mirrors. |
 | **Google Drive** | One-tap **Continue with Google** in builds with embedded OAuth credentials, or guided self-hosted setup. Mirrors to a user-owned Drive folder with multiple Google accounts, retention, cloud restore, and automatic uploads at most every 20 hours. Each local account has its own Google link; signed-out accounts stay remembered for a quick return. |
-| **Reminders** | Offline OS notifications for task starts, deadlines, and a daily review, with configurable lead time and review time. |
-| **Nearby** | LAN discovery, QR pairing, a one-tap **Sync now** button, separate Sync / Send / Inbox / History tabs, six-digit transfer codes, note and file transfer, and a persistent share log. |
+| **Reminders** | Offline OS notifications for task starts, deadlines, custom per-task reminders, and a daily review, with configurable lead time and review time. |
+| **Nearby** | LAN discovery, QR pairing, a one-tap **Sync now** button, separate Sync / Send / Inbox / History tabs, six-digit transfer codes, note, file, and single-task bundle transfer, and a persistent share log. |
 | **Branding** | Adaptive Android icon with themed monochrome layer, iOS/macOS/Windows launcher icons, a Linux bundle-aware window and menu icon, Windows taskbar AppUserModelID, and a notification icon. |
 | **Interface** | Warm paper palette, deep green and persimmon accents, adaptive sidebar / rail / bottom navigation, command palette, compact layouts down to phone width, and labelled icon menus on every platform. |
 
@@ -60,7 +61,7 @@ points = effort (1–5)
 ```
 
 - Priority: low `0.8`, normal `1.0`, high `1.3`, urgent `1.6`
-- Work kind: official `1.0`, ad-hoc `0.75`, personal `0.5`
+- Work kind: official `1.0`, learning `0.9`, creative `0.85`, ad-hoc `0.75`, admin `0.6`, personal `0.5`
 - A task is worth full points when done. With steps, progress is the completed-step ratio.
 
 The day target is a capacity signal, not a productivity score.
@@ -75,8 +76,8 @@ The day target is a capacity signal, not a productivity score.
 Pairing remembers the rotating six-digit code for the session, so later sends do not ask again. The Nearby page is split into four tabs:
 
 - **Sync** — pairing QR, scan/paste/manual address, and one-tap two-way sync.
-- **Send** — send a markdown note, a file up to 100 MB, or the full ledger; or pull the other ledger.
-- **Inbox** — received notes, files, and snapshots with explicit actions. A snapshot waits here until you confirm a restore, and the restore writes a pre-restore safety copy first.
+- **Send** — send one task bundle, a markdown note, a file up to 100 MB, or the full ledger; or pull the other ledger.
+- **Inbox** — received notes, files, task bundles, and snapshots with explicit actions. A snapshot waits here until you confirm a restore, and the restore writes a pre-restore safety copy first. A received task bundle waits for an explicit **Import task**.
 - **History** — a durable 500-entry log of what was sent, received, restored, journaled, or removed, with direction filters.
 
 **Security model:** traffic is direct device-to-device and is **not encrypted**. The six-digit code guards each transfer and rotates whenever Nearby starts. The pairing QR contains that code, so show it only to your own device. Only private, loopback, and link-local addresses are accepted. Use Nearby on a network you trust. There is no internet relay, account, or cloud copy.
@@ -95,6 +96,23 @@ If UDP discovery is blocked, use **Manual address** with the host and port shown
 | macOS | Incoming connections and Camera | The sandbox entitlement is included in release builds. |
 
 If discovery stays empty after allowing access, use **Manual address** or check that both devices are on the same Wi-Fi network and that client isolation is disabled.
+
+## Share one task
+
+A full-ledger sync is not always what you want. Open a task and choose **Share
+task bundle** from its menu, or use **Nearby → Send → Send task** and pick a
+task with search. The resulting `.daymark-task` ZIP contains:
+
+- the task, category, markdown notes, priority, and reminders;
+- every step, tracked-time segment, and activity entry;
+- every attached file, up to the task's 90 MB limit.
+
+On another device, import it from **Settings → Backup & portability → Import
+task bundle**, or import a bundle received in **Nearby → Inbox**. Re-importing
+the same task updates that task rather than duplicating it. Time entries are
+additive, and a newer local copy wins by default so an old bundle cannot
+overwrite work done on the receiving device. There is no cloud step and no
+shared account.
 
 ## Optional Google Drive mirror
 
@@ -149,14 +167,21 @@ system, so they fire without a network connection:
 
 - **Task start** — with a lead time of 0 to 60 minutes.
 - **Deadline** — at the task's due time.
+- **Custom reminder** — an exact date, time, and optional note set on the task
+  itself, independent of the global lead time.
 - **Daily closing note** — one reminder at your chosen time.
 
-Open **Settings → Offline reminders** to grant notification permission, choose
-the lead time, change the daily time, reschedule, or send a test notification.
-The schedule refreshes when tasks change, after a restore, and when the app
-opens. Android reschedules pending alarms after a reboot through the plugin's
-boot receiver. Desktop notification support depends on the system notification
-service.
+Add or clear a custom reminder in the task editor. Open **Settings → Offline
+reminders** to grant notification permission, choose the lead time, change the
+daily time, reschedule, or send a test notification. The schedule refreshes when
+tasks change, after a restore, and when the app opens. Android reschedules
+pending alarms after a reboot through the plugin's boot receiver.
+
+Windows, Android, iOS, and macOS use the operating system's scheduled
+notifications. The Linux notification plugin has no offline scheduler, so while
+Daymark is open it checks every 20 seconds and raises any start, deadline,
+custom, or closing reminder that just became due. Keep Daymark open on Linux if
+you rely on reminders; nothing is sent over the network.
 
 ## Backups you can read
 
@@ -170,9 +195,10 @@ daymark-backup-20261024-183000.zip
 ├── markdown/
 │   ├── journal/       One markdown file per journal entry
 │   └── tasks/         One markdown file per task, including notes
+└── attachments/       Files attached to tasks, preserving their relative paths
 ```
 
-Imports are validated before a single row is replaced. Invalid checksums, unsupported schema versions, and oversized archives are rejected. See `docs/ARCHITECTURE.md` for the restore transaction.
+Imports are validated before a single row is replaced. Invalid checksums, unsupported schema versions, unsafe attachment paths, and oversized archives are rejected. Restore replaces the attachment tree along with the metadata and writes a pre-restore safety copy first. See `docs/ARCHITECTURE.md` for the restore transaction.
 
 ## Build and run
 

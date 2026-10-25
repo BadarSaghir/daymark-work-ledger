@@ -642,6 +642,18 @@ class BackupService {
       files['markdown/journal/$date.md'] = '# $date\n\n$body\n';
     }
 
+    final attachmentRows = await _db.query(
+      'task_attachments',
+      orderBy: 'created_at ASC',
+    );
+    final attachmentsByTask = <String, List<String>>{};
+    for (final row in attachmentRows) {
+      final taskId = row['task_id'] as String?;
+      final name = row['file_name'] as String?;
+      if (taskId == null || name == null) continue;
+      attachmentsByTask.putIfAbsent(taskId, () => []).add(name);
+    }
+
     final categoryRows = await _db.query('categories');
     final categoryNames = {
       for (final row in categoryRows)
@@ -674,6 +686,15 @@ class BackupService {
         ..writeln('# $title')
         ..writeln();
       if (notes.isNotEmpty) buffer.writeln(notes);
+      final attachments = attachmentsByTask[id] ?? const <String>[];
+      if (attachments.isNotEmpty) {
+        buffer
+          ..writeln()
+          ..writeln('## Attachments');
+        for (final attachment in attachments) {
+          buffer.writeln('- $attachment');
+        }
+      }
       files['markdown/tasks/$name.md'] = buffer.toString();
     }
     return files;
@@ -695,7 +716,8 @@ class BackupService {
       '# Daymark export\n\n'
       'Exported ${now.toIso8601String()}.\n\n'
       'This folder contains your journal and task notes as plain markdown. '
-      'For a complete, restorable snapshot use “Create backup” instead.\n',
+      'Task attachment files are not copied here. For a complete, restorable '
+      'snapshot use “Create backup” instead.\n',
     );
     return directory;
   }
@@ -730,7 +752,12 @@ class BackupService {
 
   static String? _safeRelativePath(String raw) {
     final normalized = raw.trim().replaceAll('\\', '/');
-    if (normalized.isEmpty || normalized.startsWith('/')) return null;
+    if (normalized.isEmpty ||
+        normalized.startsWith('/') ||
+        p.isAbsolute(normalized) ||
+        p.windows.isAbsolute(normalized)) {
+      return null;
+    }
     final parts = normalized.split('/');
     if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
       return null;
@@ -761,8 +788,10 @@ Created ${now.toLocal().toIso8601String()}
 - `backup.json` is the complete data snapshot. It has a SHA-256 checksum.
 - `manifest.json` records format and schema versions.
 - `markdown/` contains readable mirrors of journals and task notes.
+- `attachments/` contains the files attached to tasks.
 
-Restore from Daymark → Settings → Data. Backups are plain files and are not
-encrypted; store them somewhere you trust. A live stopwatch is not included.
+Restore from Daymark → Settings → Backup & portability. Backups are plain files
+and are not encrypted; store them somewhere you trust. A live stopwatch is not
+included.
 ''';
 }

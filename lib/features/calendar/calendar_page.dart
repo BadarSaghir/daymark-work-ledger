@@ -31,7 +31,7 @@ class CalendarPage extends ConsumerWidget {
     final month = DateTime(selected.year, selected.month);
     final focusAsync = ref.watch(monthFocusProvider(month));
     final focusByDay = focusAsync.value ?? const <String, int>{};
-    final dayTasks = views.forDate(selected).toList();
+    final dayTasks = _viewsForDay(views, selected);
     final dayFocus = ref.watch(dayFocusProvider(selected)).value ?? 0;
     final dayBlocks = _scheduledBlocksForDay(selected, views);
     final dayOccupied = _occupiedMinutes(dayBlocks);
@@ -419,7 +419,7 @@ class _DayTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final inMonth = day.month == anchor.month;
-    final dayTasks = views.forDate(day).toList();
+    final dayTasks = _viewsForDay(views, day);
     final open = dayTasks.where((view) => !view.isDone).length;
     final done = dayTasks.where((view) => view.isDone).length;
     final booked = _occupiedMinutes(_scheduledBlocksForDay(day, views));
@@ -641,7 +641,7 @@ class _WeekAgenda extends StatelessWidget {
                     const SizedBox(width: AppSpace.md),
                     Expanded(
                       child: () {
-                        final tasks = views.forDate(days[index]).toList();
+                        final tasks = _viewsForDay(views, days[index]);
                         if (tasks.isEmpty) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 8),
@@ -748,6 +748,26 @@ class _MonthStatRow extends StatelessWidget {
       ),
     );
   }
+}
+
+List<TaskView> _viewsForDay(List<TaskView> views, DateTime day) {
+  final key = dateKey(day);
+  final result = views.where((view) {
+    if (view.task.plannedDate == key) return true;
+    final start = view.task.scheduledStart;
+    if (start != null && dateKey(start) == key) return true;
+    final completed = view.task.completedAt;
+    return completed != null && dateKey(completed) == key;
+  }).toList();
+  result.sort((a, b) {
+    final aStart = a.task.scheduledStart;
+    final bStart = b.task.scheduledStart;
+    if (aStart != null && bStart != null) return aStart.compareTo(bStart);
+    if (aStart != null) return -1;
+    if (bStart != null) return 1;
+    return a.task.position.compareTo(b.task.position);
+  });
+  return result;
 }
 
 class _ScheduledBlock {
