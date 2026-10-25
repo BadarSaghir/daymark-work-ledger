@@ -74,7 +74,9 @@ void main() {
   testWidgets('phone bottom bar opens Nearby without overflow', (tester) async {
     await pumpApp(tester, const Size(390, 844));
 
-    await tester.tap(find.text('Sync'));
+    await tester.tap(find.text('More'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nearby & sync'));
     await tester.pump();
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 200));

@@ -92,8 +92,9 @@ class LocalAccountGate extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _open(BuildContext context, WidgetRef ref, String id) async {
     try {
