@@ -145,7 +145,7 @@ class NotificationService {
     );
     const windows = WindowsInitializationSettings(
       appName: 'Daymark',
-      appUserModelId: 'SardarBadar.Daymark.WorkLedger',
+      appUserModelId: 'com.daymark.daymark',
       guid: 'a3d9c3f6-6f7b-4be4-9d3b-1f2f7d1a8c42',
     );
     await _plugin.initialize(
@@ -205,28 +205,14 @@ class NotificationService {
     _linuxFallbackCount = 0;
     var scheduled = 0;
     final now = DateTime.now();
-    final horizon = now.add(const Duration(days: 60));
+    final horizon = now.add(const Duration(days: 365));
 
     if (preferences.taskReminders) {
-      final upcoming = <TaskView>[];
+      final candidates =
+          <({int id, DateTime when, String title, String body})>[];
       for (final view in tasks) {
         final task = view.task;
         if (task.isDone || task.archived) continue;
-        final start = task.scheduledStart;
-        final due = task.dueAt;
-        if ((start != null && start.isAfter(now)) ||
-            (due != null && due.isAfter(now))) {
-          upcoming.add(view);
-        }
-      }
-      upcoming.sort((a, b) {
-        final aTime = a.task.scheduledStart ?? a.task.dueAt ?? DateTime(2100);
-        final bTime = b.task.scheduledStart ?? b.task.dueAt ?? DateTime(2100);
-        return aTime.compareTo(bTime);
-      });
-
-      for (final view in upcoming.take(60)) {
-        final task = view.task;
         final category = view.category?.name;
         final start = task.scheduledStart;
         if (start != null) {
@@ -234,8 +220,9 @@ class NotificationService {
             Duration(minutes: preferences.leadMinutes),
           );
           if (when.isAfter(now) && when.isBefore(horizon)) {
-            final ok = await _schedule(
+            candidates.add((
               id: _notificationId('${task.id}:start'),
+              when: when,
               title: preferences.leadMinutes == 0
                   ? 'Starting now · ${task.title}'
                   : 'Starts in ${preferences.leadMinutes} min',
@@ -244,40 +231,49 @@ class NotificationService {
                 ?category,
                 'Scheduled ${_timeLabel(start)}',
               ].join(' · '),
-              when: when,
-            );
-            if (ok) scheduled++;
+            ));
           }
         }
         final due = task.dueAt;
         if (due != null && due.isAfter(now) && due.isBefore(horizon)) {
-          final ok = await _schedule(
+          candidates.add((
             id: _notificationId('${task.id}:due'),
+            when: due,
             title: 'Due ${_timeLabel(due)} · ${task.title}',
             body: category == null
                 ? 'This is the deadline you set.'
                 : '$category · deadline',
-            when: due,
-          );
-          if (ok) scheduled++;
+          ));
         }
         final reminderAt = task.reminderAt;
         if (reminderAt != null &&
             reminderAt.isAfter(now) &&
             reminderAt.isBefore(horizon)) {
           final note = task.reminderNote?.trim() ?? '';
-          final ok = await _schedule(
+          candidates.add((
             id: _notificationId('${task.id}:custom'),
+            when: reminderAt,
             title: 'Reminder · ${task.title}',
             body: note.isEmpty
                 ? (category == null
                       ? 'You asked to be reminded about this task.'
                       : '$category · custom reminder')
                 : note,
-            when: reminderAt,
-          );
-          if (ok) scheduled++;
+          ));
         }
+      }
+
+      // Keep the nearest reminders. iOS allows only 64 pending notifications,
+      // so a task cap would let distant deadlines crowd out custom reminders.
+      candidates.sort((a, b) => a.when.compareTo(b.when));
+      for (final reminder in candidates.take(60)) {
+        final ok = await _schedule(
+          id: reminder.id,
+          title: reminder.title,
+          body: reminder.body,
+          when: reminder.when,
+        );
+        if (ok) scheduled++;
       }
     }
 
@@ -526,7 +522,7 @@ class NotificationService {
   Future<bool> _scheduleReview(ReminderPreferences preferences) async {
     try {
       final now = tz.TZDateTime.now(tz.local);
-      var when = tz.TZDateTime(
+      final first = tz.TZDateTime(
         tz.local,
         now.year,
         now.month,
@@ -534,32 +530,39 @@ class NotificationService {
         preferences.reviewHour,
         preferences.reviewMinute,
       );
-      if (!when.isAfter(now)) {
-        when = when.add(const Duration(days: 1));
+      final start = first.isAfter(now)
+          ? first
+          : tz.TZDateTime(
+              tz.local,
+              now.year,
+              now.month,
+              now.day + 1,
+              preferences.reviewHour,
+              preferences.reviewMinute,
+            );
+
+      // Windows has no repeating local notifications. Queue a month of closing
+      // notes so a long-running workspace keeps its daily cue.
+      if (Platform.isWindows) {
+        for (var offset = 0; offset < 30; offset++) {
+          final when = tz.TZDateTime(
+            tz.local,
+            start.year,
+            start.month,
+            start.day + offset,
+            preferences.reviewHour,
+            preferences.reviewMinute,
+          );
+          await _scheduleReviewAt(
+            id: _reviewId + offset,
+            when: when,
+            repeatDaily: false,
+          );
+        }
+        return true;
       }
-      await _plugin.zonedSchedule(
-        id: _reviewId,
-        title: 'Close the day',
-        body:
-            'A few minutes to mark what moved, what stalled, and what '
-            'tomorrow needs.',
-        scheduledDate: when,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
-            importance: Importance.defaultImportance,
-            priority: Priority.defaultPriority,
-            icon: 'ic_notification',
-          ),
-          iOS: DarwinNotificationDetails(),
-          macOS: DarwinNotificationDetails(),
-          linux: LinuxNotificationDetails(),
-        ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
+
+      await _scheduleReviewAt(id: _reviewId, when: start, repeatDaily: true);
       return true;
     } catch (_) {
       if (Platform.isLinux) {
@@ -568,6 +571,36 @@ class NotificationService {
       }
       return false;
     }
+  }
+
+  Future<void> _scheduleReviewAt({
+    required int id,
+    required tz.TZDateTime when,
+    required bool repeatDaily,
+  }) {
+    return _plugin.zonedSchedule(
+      id: id,
+      title: 'Close the day',
+      body:
+          'A few minutes to mark what moved, what stalled, and what '
+          'tomorrow needs.',
+      scheduledDate: when,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+          icon: 'ic_notification',
+        ),
+        iOS: DarwinNotificationDetails(),
+        macOS: DarwinNotificationDetails(),
+        linux: LinuxNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
+    );
   }
 
   static int _notificationId(String value) {
