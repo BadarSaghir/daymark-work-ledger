@@ -75,7 +75,9 @@ void main() {
     await pumpApp(tester, const Size(390, 844));
 
     await tester.tap(find.text('More'));
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     await tester.tap(find.text('Nearby & sync'));
     await tester.pump();
     for (var i = 0; i < 8; i++) {
