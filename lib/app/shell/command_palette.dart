@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/enum_ui.dart';
+import '../../core/ui/layout.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../data/models/task_view.dart';
@@ -48,6 +49,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final compact = Layout.isCompact(context);
     final query = _query.text.trim().toLowerCase();
     final tasks = (ref.watch(tasksProvider).value ?? const <TaskView>[])
         .where((view) => !view.task.archived)
@@ -147,7 +149,138 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
         ? tasks.where((view) => !view.isDone).take(5).toList()
         : tasks.take(8).toList();
 
-    return Stack(
+    final searchField = TextField(
+      controller: _query,
+      focusNode: _focus,
+      autofocus: true,
+      style: AppText.titleM.copyWith(
+        color: colors.ink,
+        fontSize: compact ? 17 : 16,
+      ),
+      decoration: InputDecoration(
+        hintText: compact
+            ? 'Search Daymark'
+            : 'Search tasks, jump somewhere, do a thing…',
+        hintStyle: AppText.bodyMedium.copyWith(color: colors.inkFaint),
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        contentPadding: EdgeInsets.zero,
+      ),
+      onChanged: (_) => setState(() {}),
+      onSubmitted: (_) {
+        if (actions.isNotEmpty) {
+          actions.first.run();
+        } else if (filteredTasks.isNotEmpty) {
+          _openTask(filteredTasks.first);
+        }
+      },
+    );
+    final listChildren = <Widget>[
+      if (actions.isNotEmpty) ...[
+        const _Section('ACTIONS'),
+        for (final command in actions)
+          _CommandRow(
+            label: command.label,
+            hint: command.hint,
+            icon: command.icon,
+            keys: command.keys,
+            onTap: command.run,
+          ),
+      ],
+      if (destinations.isNotEmpty) ...[
+        const _Section('GO TO'),
+        for (final item in destinations)
+          _CommandRow(
+            label: item.$2,
+            hint: 'Go to ${item.$2.toLowerCase()}',
+            icon: item.$3,
+            onTap: () => _go(item.$1),
+          ),
+      ],
+      if (filteredTasks.isNotEmpty) ...[
+        _Section(query.isEmpty ? 'OPEN TASKS' : 'TASKS'),
+        for (final view in filteredTasks)
+          _TaskRow(view: view, onTap: () => _openTask(view)),
+      ],
+      if (actions.isEmpty && destinations.isEmpty && filteredTasks.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(AppSpace.xxl),
+          child: Text(
+            'Nothing matches “${_query.text.trim()}”.',
+            textAlign: TextAlign.center,
+            style: AppText.body.copyWith(color: colors.inkFaint),
+          ),
+        ),
+      const SizedBox(height: AppSpace.sm),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.xl),
+        child: Text(
+          settings?.displayName.trim().isEmpty == false
+              ? '${settings!.displayName}\'s local ledger · everything stays on this device'
+              : 'Everything stays on this device',
+          style: AppText.bodySmall.copyWith(
+            color: colors.inkFaint,
+            fontSize: 10.5,
+          ),
+        ),
+      ),
+    ];
+
+    if (compact) {
+      final hasQuery = _query.text.isNotEmpty;
+      return _withBackGuard(
+        Material(
+          color: colors.canvas,
+          child: SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.xs,
+                    AppSpace.sm,
+                    AppSpace.lg,
+                    AppSpace.sm,
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Close search',
+                        onPressed: widget.onClose,
+                        icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                      ),
+                      Expanded(child: searchField),
+                      if (hasQuery)
+                        IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _query.clear();
+                            _focus.requestFocus();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close_rounded, size: 19),
+                        ),
+                    ],
+                  ),
+                ),
+                Divider(color: colors.line, height: 1),
+                Expanded(
+                  child: ListView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.only(bottom: AppSpace.lg),
+                    children: listChildren,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _withBackGuard(Stack(
       children: [
         Positioned.fill(
           child: GestureDetector(
@@ -195,33 +328,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                               color: colors.inkFaint,
                             ),
                             const SizedBox(width: AppSpace.sm),
-                            Expanded(
-                              child: TextField(
-                                controller: _query,
-                                focusNode: _focus,
-                                autofocus: true,
-                                style: AppText.titleM.copyWith(
-                                  color: colors.ink,
-                                  fontSize: 16,
-                                ),
-                                decoration: const InputDecoration(
-                                  hintText: 'Search tasks, jump somewhere, do a thing…',
-                                  filled: false,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                                onChanged: (_) => setState(() {}),
-                                onSubmitted: (_) {
-                                  if (actions.isNotEmpty) {
-                                    actions.first.run();
-                                  } else if (filteredTasks.isNotEmpty) {
-                                    _openTask(filteredTasks.first);
-                                  }
-                                },
-                              ),
-                            ),
+                            Expanded(child: searchField),
                             const KeyHint('ESC'),
                           ],
                         ),
@@ -233,65 +340,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                           padding: const EdgeInsets.symmetric(
                             vertical: AppSpace.sm,
                           ),
-                          children: [
-                            if (actions.isNotEmpty) ...[
-                              _Section('ACTIONS'),
-                              for (final command in actions)
-                                _CommandRow(
-                                  label: command.label,
-                                  hint: command.hint,
-                                  icon: command.icon,
-                                  keys: command.keys,
-                                  onTap: command.run,
-                                ),
-                            ],
-                            if (destinations.isNotEmpty) ...[
-                              _Section('GO TO'),
-                              for (final item in destinations)
-                                _CommandRow(
-                                  label: item.$2,
-                                  hint: 'Go to ${item.$2.toLowerCase()}',
-                                  icon: item.$3,
-                                  onTap: () => _go(item.$1),
-                                ),
-                            ],
-                            if (filteredTasks.isNotEmpty) ...[
-                              _Section(query.isEmpty ? 'OPEN TASKS' : 'TASKS'),
-                              for (final view in filteredTasks)
-                                _TaskRow(
-                                  view: view,
-                                  onTap: () => _openTask(view),
-                                ),
-                            ],
-                            if (actions.isEmpty &&
-                                destinations.isEmpty &&
-                                filteredTasks.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.all(AppSpace.xxl),
-                                child: Text(
-                                  'Nothing matches “${_query.text.trim()}”.',
-                                  textAlign: TextAlign.center,
-                                  style: AppText.body.copyWith(
-                                    color: colors.inkFaint,
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: AppSpace.sm),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpace.xl,
-                              ),
-                              child: Text(
-                                settings?.displayName.trim().isEmpty == false
-                                    ? '${settings!.displayName}\'s local ledger · everything stays on this device'
-                                    : 'Everything stays on this device',
-                                style: AppText.bodySmall.copyWith(
-                                  color: colors.inkFaint,
-                                  fontSize: 10.5,
-                                ),
-                              ),
-                            ),
-                          ],
+                          children: listChildren,
                         ),
                       ),
                     ],
@@ -302,6 +351,16 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
           ),
         ),
       ],
+    ));
+  }
+
+  Widget _withBackGuard(Widget child) {
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) widget.onClose();
+      },
+      child: child,
     );
   }
 
@@ -412,7 +471,7 @@ class _CommandRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (keys != null) KeyHint(keys!),
+            if (keys != null && !Layout.isCompact(context)) KeyHint(keys!),
           ],
         ),
       ),

@@ -19,11 +19,29 @@ import '../../widgets/quick_capture.dart';
 import '../../widgets/task_card.dart';
 import '../../widgets/task_editor.dart';
 
-class PlannerPage extends ConsumerWidget {
+class PlannerPage extends ConsumerStatefulWidget {
   const PlannerPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlannerPage> createState() => _PlannerPageState();
+}
+
+class _PlannerPageState extends ConsumerState<PlannerPage> {
+  bool _appliedMobileDefault = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_appliedMobileDefault || !Layout.isCompact(context)) return;
+    _appliedMobileDefault = true;
+    if (ref.read(plannerListModeProvider)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(plannerListModeProvider.notifier).state = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selected = ref.watch(selectedDateProvider);
     final listMode = ref.watch(plannerListModeProvider);
     final tasksAsync = ref.watch(tasksProvider);
@@ -67,11 +85,12 @@ class PlannerPage extends ConsumerWidget {
           ),
           label: Text(listMode ? 'Board' : 'List'),
         ),
-        FilledButton.icon(
-          onPressed: () => showQuickCapture(context, plannedDate: selected),
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Add work'),
-        ),
+        if (!Layout.isCompact(context))
+          FilledButton.icon(
+            onPressed: () => showQuickCapture(context, plannedDate: selected),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Add work'),
+          ),
       ],
     );
 
@@ -88,6 +107,7 @@ class PlannerPage extends ConsumerWidget {
     if (listMode) {
       return PageWidth(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.only(bottom: AppSpace.x6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,6 +167,7 @@ class PlannerPage extends ConsumerWidget {
 
     return PageWidth(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: AppSpace.x6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -356,54 +377,92 @@ class _WeekStrip extends StatelessWidget {
     final colors = context.colors;
     final days = weekDays(selected);
     final today = startOfDay(DateTime.now());
+    final dayCells = [
+      for (final day in days)
+        Expanded(
+          child: _DayCell(
+            day: day,
+            selected: isSameDay(day, selected),
+            today: isSameDay(day, today),
+            count: views.forDate(day).where((view) => !view.isDone).length,
+            onTap: () => onSelect(day),
+          ),
+        ),
+    ];
     return SurfaceCard(
       padding: const EdgeInsets.all(AppSpace.md),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Previous week',
-            onPressed: () => onShift(-7),
-            icon: const Icon(Icons.chevron_left_rounded, size: 20),
-          ),
-          Expanded(
-            child: Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 520;
+          if (compact) {
+            return Column(
               children: [
-                for (final day in days)
-                  Expanded(
-                    child: _DayCell(
-                      day: day,
-                      selected: isSameDay(day, selected),
-                      today: isSameDay(day, today),
-                      count: views
-                          .forDate(day)
-                          .where((view) => !view.isDone)
-                          .length,
-                      onTap: () => onSelect(day),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Previous week',
+                      onPressed: () => onShift(-7),
+                      icon: const Icon(Icons.chevron_left_rounded, size: 20),
                     ),
-                  ),
+                    Expanded(child: Row(children: dayCells)),
+                    IconButton(
+                      tooltip: 'Next week',
+                      onPressed: () => onShift(7),
+                      icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.xs),
+                Row(
+                  children: [
+                    if (!isSameDay(selected, today))
+                      TextButton.icon(
+                        onPressed: () => onSelect(today),
+                        icon: const Icon(Icons.today_rounded, size: 16),
+                        label: const Text('Today'),
+                      ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () =>
+                          showTaskEditor(context, initialDate: selected),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('New task'),
+                    ),
+                  ],
+                ),
               ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Next week',
-            onPressed: () => onShift(7),
-            icon: const Icon(Icons.chevron_right_rounded, size: 20),
-          ),
-          const SizedBox(width: AppSpace.xs),
-          if (!isSameDay(selected, today))
-            TextButton(
-              onPressed: () => onSelect(today),
-              child: const Text('Today'),
-            ),
-          const SizedBox(width: AppSpace.sm),
-          Container(width: 1, height: 28, color: colors.line),
-          const SizedBox(width: AppSpace.sm),
-          IconButton(
-            tooltip: 'New task',
-            onPressed: () => showTaskEditor(context, initialDate: selected),
-            icon: const Icon(Icons.add_rounded, size: 20),
-          ),
-        ],
+            );
+          }
+          return Row(
+            children: [
+              IconButton(
+                tooltip: 'Previous week',
+                onPressed: () => onShift(-7),
+                icon: const Icon(Icons.chevron_left_rounded, size: 20),
+              ),
+              Expanded(child: Row(children: dayCells)),
+              IconButton(
+                tooltip: 'Next week',
+                onPressed: () => onShift(7),
+                icon: const Icon(Icons.chevron_right_rounded, size: 20),
+              ),
+              const SizedBox(width: AppSpace.xs),
+              if (!isSameDay(selected, today))
+                TextButton(
+                  onPressed: () => onSelect(today),
+                  child: const Text('Today'),
+                ),
+              const SizedBox(width: AppSpace.sm),
+              Container(width: 1, height: 28, color: colors.line),
+              const SizedBox(width: AppSpace.sm),
+              IconButton(
+                tooltip: 'New task',
+                onPressed: () => showTaskEditor(context, initialDate: selected),
+                icon: const Icon(Icons.add_rounded, size: 20),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -506,18 +565,19 @@ class _BoardSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final ratio = target == 0 ? 0.0 : summary.earnedPoints / target;
-    return Row(
+    return Wrap(
+      spacing: AppSpace.md,
+      runSpacing: AppSpace.sm,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
           longDateLabel(selected),
           style: AppText.bodyMedium.copyWith(color: colors.ink),
         ),
-        const SizedBox(width: AppSpace.md),
         Text(
           '${summary.doneCount}/${summary.taskCount} done',
           style: AppText.bodySmall.copyWith(color: colors.inkMuted),
         ),
-        const SizedBox(width: AppSpace.md),
         BadgePill(
           label:
               '${formatPoints(summary.earnedPoints)} / ${formatPoints(target)}',
@@ -525,7 +585,6 @@ class _BoardSummary extends StatelessWidget {
           color: ratio >= 1 ? colors.green : colors.primary,
           compact: true,
         ),
-        const Spacer(),
         if (summary.taskCount > 0)
           Text(
             '${(summary.completion * 100).round()}%',
@@ -718,20 +777,35 @@ class _ListPlan extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('PLAN', style: AppText.label.copyWith(color: colors.inkFaint)),
-            const Spacer(),
-            BadgePill(
-              label: '${formatPoints(summary.plannedPoints)} planned',
-              icon: Icons.speed_rounded,
-              color: colors.primary,
-              compact: true,
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text(
+                'PLAN',
+                style: AppText.label.copyWith(color: colors.inkFaint),
+              ),
             ),
-            const SizedBox(width: 6),
-            BadgePill(
-              label: 'target ${formatPoints(target)}',
-              color: colors.inkMuted,
-              compact: true,
+            const Spacer(),
+            Flexible(
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  BadgePill(
+                    label: '${formatPoints(summary.plannedPoints)} planned',
+                    icon: Icons.speed_rounded,
+                    color: colors.primary,
+                    compact: true,
+                  ),
+                  BadgePill(
+                    label: 'target ${formatPoints(target)}',
+                    color: colors.inkMuted,
+                    compact: true,
+                  ),
+                ],
+              ),
             ),
           ],
         ),

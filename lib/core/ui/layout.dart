@@ -5,19 +5,27 @@ import '../theme/app_colors.dart';
 class Layout {
   Layout._();
 
-  static bool isCompact(BuildContext context) =>
-      MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+  /// Phone-first layout detection. Width alone is not enough: a phone in
+  /// landscape is still a phone, while a narrow desktop window is not.
+  static bool isCompact(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return size.width < AppBreakpoints.compact ||
+        (size.shortestSide < 600 && size.width < 1000);
+  }
 
   static bool isExpanded(BuildContext context) =>
       MediaQuery.sizeOf(context).width >= AppBreakpoints.expanded;
 
+  static double bottomInset(BuildContext context) =>
+      MediaQuery.viewPaddingOf(context).bottom;
+
   static EdgeInsets pagePadding(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    if (width < AppBreakpoints.compact) {
+    if (isCompact(context)) {
       return const EdgeInsets.fromLTRB(
-        AppSpace.xl,
-        AppSpace.md,
-        AppSpace.xl,
+        AppSpace.lg,
+        AppSpace.sm,
+        AppSpace.lg,
         AppSpace.x6,
       );
     }

@@ -220,11 +220,53 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         modalBackgroundColor: c.surface,
         modalBarrierColor: Colors.black.withValues(alpha: 0.35),
+        showDragHandle: false,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(AppRadius.sheet),
           ),
         ),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: c.canvas,
+        foregroundColor: c.ink,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        toolbarHeight: 56,
+        titleTextStyle: AppText.titleM.copyWith(
+          color: c.ink,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 68,
+        elevation: 0,
+        backgroundColor: c.surface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: c.primarySoft,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          return IconThemeData(
+            size: 24,
+            color: states.contains(WidgetState.selected)
+                ? c.primary
+                : c.inkMuted,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          return AppText.bodySmall.copyWith(
+            color: states.contains(WidgetState.selected)
+                ? c.primary
+                : c.inkMuted,
+            fontSize: 11.5,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w800
+                : FontWeight.w600,
+          );
+        }),
       ),
     );
     return base;

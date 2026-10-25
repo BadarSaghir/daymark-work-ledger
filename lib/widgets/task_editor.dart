@@ -5,6 +5,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../core/ui/enum_ui.dart';
 import '../core/ui/form.dart';
+import '../core/ui/layout.dart';
 import '../core/ui/markdown.dart';
 import '../core/ui/sheets.dart';
 import '../core/utils/date_keys.dart';
@@ -301,6 +302,71 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
     final categories = ref.watch(categoriesProvider).value ?? const [];
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= 760;
+    final compact = Layout.isCompact(context);
+    final saveButton = FilledButton.icon(
+      onPressed: _saving ? null : _save,
+      icon: _saving
+          ? const SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.check_rounded, size: 18),
+      label: Text(isEditing ? 'Save changes' : 'Create task'),
+    );
+    final footer = compact
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isEditing) ...[
+                Text(
+                  '${widget.existing!.doneSteps}/${widget.existing!.totalSteps} steps · '
+                  '${formatPoints(widget.existing!.points)}',
+                  style: AppText.bodySmall.copyWith(color: colors.inkFaint),
+                ),
+                const SizedBox(height: AppSpace.sm),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).maybePop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(child: saveButton),
+                ],
+              ),
+            ],
+          )
+        : Row(
+            children: [
+              if (isEditing) ...[
+                Text(
+                  '${widget.existing!.doneSteps}/${widget.existing!.totalSteps} steps · '
+                  '${formatPoints(widget.existing!.points)}',
+                  style: AppText.bodySmall.copyWith(color: colors.inkFaint),
+                ),
+                const Spacer(),
+              ] else
+                const Spacer(),
+              TextButton(
+                onPressed: _saving
+                    ? null
+                    : () => Navigator.of(context).maybePop(),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              saveButton,
+            ],
+          );
 
     return AppSheet(
       title: isEditing ? 'Edit task' : 'New task',
@@ -308,38 +374,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           ? 'Shape the work without losing its history.'
           : 'Give the work a shape, a place, and a size.',
       icon: isEditing ? Icons.tune_rounded : Icons.add_task_rounded,
-      footer: Row(
-        children: [
-          if (isEditing) ...[
-            Text(
-              '${widget.existing!.doneSteps}/${widget.existing!.totalSteps} steps · '
-              '${formatPoints(widget.existing!.points)}',
-              style: AppText.bodySmall.copyWith(color: colors.inkFaint),
-            ),
-            const Spacer(),
-          ] else
-            const Spacer(),
-          TextButton(
-            onPressed: _saving ? null : () => Navigator.of(context).maybePop(),
-            child: const Text('Cancel'),
-          ),
-          const SizedBox(width: AppSpace.sm),
-          FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? const SizedBox(
-                    width: 15,
-                    height: 15,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.check_rounded, size: 18),
-            label: Text(isEditing ? 'Save changes' : 'Create task'),
-          ),
-        ],
-      ),
+      footer: footer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

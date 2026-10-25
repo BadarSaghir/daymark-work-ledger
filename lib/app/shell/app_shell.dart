@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/brand_mark.dart';
 import '../../core/ui/surface_card.dart';
+import '../../core/ui/sheets.dart';
 import '../../core/ui/layout.dart';
 import '../../features/calendar/calendar_page.dart';
 import '../../features/categories/categories_page.dart';
@@ -34,6 +35,12 @@ import '../../widgets/task_editor.dart';
 import '../../widgets/timer_pill.dart';
 import '../nav.dart';
 import 'command_palette.dart';
+
+String _initialFor(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) return 'D';
+  return trimmed.substring(0, 1).toUpperCase();
+}
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -133,10 +140,12 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _go(int index) {
+    HapticFeedback.selectionClick();
     ref.read(navIndexProvider.notifier).state = index;
   }
 
   void _openPalette() {
+    HapticFeedback.selectionClick();
     ref.read(commandPaletteOpenProvider.notifier).state = true;
   }
 
@@ -148,14 +157,23 @@ class _AppShellState extends ConsumerState<AppShell> {
     showTaskEditor(context, initialDate: DateTime.now());
   }
 
+  DateTime _captureDate() {
+    final index = ref.read(navIndexProvider);
+    if (index == NavTarget.planner || index == NavTarget.calendar) {
+      return ref.read(selectedDateProvider);
+    }
+    return DateTime.now();
+  }
+
   void _capture() {
-    showQuickCapture(context, plannedDate: DateTime.now());
+    HapticFeedback.selectionClick();
+    showQuickCapture(context, plannedDate: _captureDate());
   }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final compact = width < AppBreakpoints.compact;
+    final compact = Layout.isCompact(context);
     final expanded = width >= AppBreakpoints.expanded;
     final index = ref.watch(navIndexProvider);
     final paletteOpen = ref.watch(commandPaletteOpenProvider);
@@ -179,6 +197,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       NearbyPage(),
     ];
     final page = IndexedStack(index: index, children: pages);
+    final mobileChrome = compact && !paletteOpen;
 
     return CallbackShortcuts(
       bindings: {
@@ -204,9 +223,17 @@ class _AppShellState extends ConsumerState<AppShell> {
         autofocus: true,
         child: Scaffold(
           backgroundColor: context.colors.canvas,
+          appBar: mobileChrome
+              ? _MobileAppBar(
+                  index: index,
+                  displayName: settings?.displayName ?? '',
+                  onSearch: _openPalette,
+                  onAccount: () => showLocalAccountSwitcher(context),
+                )
+              : null,
           body: Row(
             children: [
-              if (expanded)
+              if (expanded && !compact)
                 _Sidebar(
                   index: index,
                   openToday: openToday,
@@ -230,7 +257,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     Positioned.fill(child: CanvasWash(child: page)),
                     Positioned(
                       right: compact ? AppSpace.lg : AppSpace.xxl,
-                      bottom: AppSpace.xxl,
+                      bottom: compact ? AppSpace.lg : AppSpace.xxl,
                       child: TimerPill(
                         onOpen: () => _go(NavTarget.focus),
                         compact: compact,
@@ -245,12 +272,13 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
             ],
           ),
-          bottomNavigationBar: compact
-              ? _BottomBar(
+          bottomNavigationBar: mobileChrome
+              ? _MobileNavBar(
                   index: index,
                   openToday: openToday,
                   timerActive: timerActive,
                   onGo: _go,
+                  onCapture: _capture,
                   onMore: () => _showMore(context),
                 )
               : null,
@@ -260,93 +288,313 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _showMore(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      backgroundColor: context.colors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppRadius.sheet),
-        ),
-      ),
-      builder: (sheetContext) {
-        final colors = sheetContext.colors;
-        final local = ref.read(localAccountProvider);
-        final items = const [
-          (NavTarget.calendar, Icons.calendar_month_outlined, 'Calendar'),
-          (NavTarget.journal, Icons.edit_note_rounded, 'Journal'),
-          (NavTarget.insights, Icons.insights_rounded, 'Insights'),
-          (NavTarget.categories, Icons.category_outlined, 'Categories'),
-          (NavTarget.nearby, Icons.sync_rounded, 'Nearby & sync'),
-          (NavTarget.settings, Icons.settings_outlined, 'Settings'),
-        ];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpace.xl,
-            AppSpace.md,
-            AppSpace.xl,
-            AppSpace.xxl,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: AppSpace.lg),
-                  decoration: BoxDecoration(
-                    color: colors.lineStrong,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              Text(
-                'More of Daymark',
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-              const SizedBox(height: AppSpace.md),
-              if (local != null) ...[
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    Icons.switch_account_rounded,
-                    size: 20,
-                    color: colors.primary,
-                  ),
-                  title: Text('Local account · ${local.active.name}'),
-                  subtitle: Text(
-                    '${local.accounts.length} remembered on this device',
+    showAppSheet<void>(context, (sheetContext) {
+      final local = ref.read(localAccountProvider);
+      final items = const [
+        (NavTarget.calendar, Icons.calendar_month_outlined, 'Calendar'),
+        (NavTarget.journal, Icons.edit_note_rounded, 'Journal'),
+        (NavTarget.insights, Icons.insights_rounded, 'Insights'),
+        (NavTarget.categories, Icons.category_outlined, 'Categories'),
+        (NavTarget.nearby, Icons.sync_rounded, 'Nearby & sync'),
+        (NavTarget.settings, Icons.settings_outlined, 'Settings'),
+      ];
+      return AppSheet(
+        title: 'More',
+        subtitle: 'Every part of your ledger, one tap away.',
+        icon: Icons.grid_view_rounded,
+        onClose: () => Navigator.of(sheetContext).pop(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (local != null) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                minTileHeight: 56,
+                leading: CircleAvatar(
+                  radius: 19,
+                  backgroundColor: sheetContext.colors.primarySoft,
+                  child: Text(
+                    _initialFor(local.active.name),
                     style: AppText.bodySmall.copyWith(
-                      color: colors.inkFaint,
-                      fontSize: 10.5,
+                      color: sheetContext.colors.primary,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  trailing: const Icon(Icons.unfold_more_rounded, size: 18),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    showLocalAccountSwitcher(context);
-                  },
                 ),
-                Divider(color: colors.line),
-                const SizedBox(height: AppSpace.sm),
-              ],
-              for (final (target, icon, label) in items)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(icon, size: 20),
-                  title: Text(label),
-                  trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _go(target);
-                  },
+                title: Text('Local account · ${local.active.name}'),
+                subtitle: Text(
+                  '${local.accounts.length} remembered on this device',
                 ),
+                trailing: const Icon(Icons.unfold_more_rounded, size: 18),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  showLocalAccountSwitcher(context);
+                },
+              ),
+              Divider(color: sheetContext.colors.line),
+              const SizedBox(height: AppSpace.sm),
             ],
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              minTileHeight: 54,
+              leading: const Icon(Icons.search_rounded, size: 21),
+              title: const Text('Search Daymark'),
+              subtitle: const Text('Find a task or jump to a screen'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _openPalette();
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              minTileHeight: 54,
+              leading: const Icon(Icons.add_task_rounded, size: 21),
+              title: const Text('New task'),
+              subtitle: const Text('Open the full task form'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _openTaskEditor();
+              },
+            ),
+            Divider(color: sheetContext.colors.line),
+            const SizedBox(height: AppSpace.sm),
+            for (final (target, icon, label) in items)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                minTileHeight: 54,
+                leading: Icon(icon, size: 21),
+                title: Text(label),
+                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _go(target);
+                },
+              ),
+          ],
+        ),
+      );
+    }, maxWidth: 560);
+  }
+}
+
+class _MobileAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _MobileAppBar({
+    required this.index,
+    required this.displayName,
+    required this.onSearch,
+    required this.onAccount,
+  });
+
+  final int index;
+  final String displayName;
+  final VoidCallback onSearch;
+  final VoidCallback onAccount;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(57);
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final initial = _initialFor(displayName);
+    return AppBar(
+      automaticallyImplyLeading: false,
+      titleSpacing: AppSpace.lg,
+      title: Row(
+        children: [
+          const BrandMark(size: 24),
+          const SizedBox(width: AppSpace.sm),
+          Flexible(
+            child: Text(
+              NavLabels.title(index),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-        );
-      },
+        ],
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'Search',
+          onPressed: onSearch,
+          icon: const Icon(Icons.search_rounded, size: 23),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: AppSpace.sm),
+          child: IconButton(
+            tooltip: 'Local account',
+            onPressed: onAccount,
+            icon: CircleAvatar(
+              radius: 14,
+              backgroundColor: colors.primarySoft,
+              child: Text(
+                initial,
+                style: AppText.bodySmall.copyWith(
+                  color: colors.primary,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: colors.line),
+      ),
+    );
+  }
+}
+
+class _MobileNavBar extends StatelessWidget {
+  const _MobileNavBar({
+    required this.index,
+    required this.openToday,
+    required this.timerActive,
+    required this.onGo,
+    required this.onCapture,
+    required this.onMore,
+  });
+
+  final int index;
+  final int openToday;
+  final bool timerActive;
+  final ValueChanged<int> onGo;
+  final VoidCallback onCapture;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final selected = index == NavTarget.today
+        ? 0
+        : index == NavTarget.planner
+        ? 1
+        : index == NavTarget.focus
+        ? 3
+        : 4;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: colors.line)),
+      ),
+      child: NavigationBar(
+        selectedIndex: selected,
+        onDestinationSelected: (value) {
+          switch (value) {
+            case 0:
+              onGo(NavTarget.today);
+            case 1:
+              onGo(NavTarget.planner);
+            case 2:
+              onCapture();
+            case 3:
+              onGo(NavTarget.focus);
+            default:
+              onMore();
+          }
+        },
+        destinations: [
+          NavigationDestination(
+            icon: _NavIcon(icon: Icons.wb_sunny_outlined, badge: openToday),
+            selectedIcon: _NavIcon(
+              icon: Icons.wb_sunny_rounded,
+              badge: openToday,
+              selected: true,
+            ),
+            label: 'Today',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.view_week_outlined),
+            selectedIcon: Icon(Icons.view_week_rounded),
+            label: 'Planner',
+          ),
+          NavigationDestination(
+            icon: Icon(
+              Icons.add_circle_rounded,
+              color: colors.accent,
+              size: 30,
+            ),
+            label: 'Capture',
+          ),
+          NavigationDestination(
+            icon: _NavIcon(icon: Icons.timer_outlined, live: timerActive),
+            selectedIcon: _NavIcon(
+              icon: Icons.timer_rounded,
+              live: timerActive,
+              selected: true,
+            ),
+            label: 'Focus',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.grid_view_outlined),
+            selectedIcon: const Icon(Icons.grid_view_rounded),
+            label: 'More',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavIcon extends StatelessWidget {
+  const _NavIcon({
+    required this.icon,
+    this.badge = 0,
+    this.selected = false,
+    this.live = false,
+  });
+
+  final IconData icon;
+  final int badge;
+  final bool selected;
+  final bool live;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        if (badge > 0)
+          Positioned(
+            top: -5,
+            right: -9,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: colors.accent,
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                '$badge',
+                textAlign: TextAlign.center,
+                style: AppText.bodySmall.copyWith(
+                  color: Colors.white,
+                  fontSize: 9,
+                  height: 1.2,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        if (live)
+          Positioned(
+            top: -1,
+            right: -2,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: colors.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: colors.surface, width: 1.5),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -375,9 +623,7 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final initial = displayName.trim().isEmpty
-        ? 'D'
-        : displayName.trim().characters.first.toUpperCase();
+    final initial = _initialFor(displayName);
     return Container(
       width: 242,
       decoration: BoxDecoration(
@@ -880,173 +1126,6 @@ class _GroupLabel extends StatelessWidget {
         style: AppText.label.copyWith(
           color: context.colors.inkFaint,
           fontSize: 8.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({
-    required this.index,
-    required this.openToday,
-    required this.timerActive,
-    required this.onGo,
-    required this.onMore,
-  });
-
-  final int index;
-  final int openToday;
-  final bool timerActive;
-  final ValueChanged<int> onGo;
-  final VoidCallback onMore;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border(top: BorderSide(color: colors.line)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpace.sm,
-            vertical: 6,
-          ),
-          child: Row(
-            children: [
-              _BottomItem(
-                label: 'Today',
-                icon: Icons.wb_sunny_outlined,
-                selected: index == NavTarget.today,
-                badge: openToday,
-                onTap: () => onGo(NavTarget.today),
-              ),
-              _BottomItem(
-                label: 'Planner',
-                icon: Icons.view_week_outlined,
-                selected: index == NavTarget.planner,
-                onTap: () => onGo(NavTarget.planner),
-              ),
-              _BottomItem(
-                label: 'Focus',
-                icon: Icons.timer_outlined,
-                selected: index == NavTarget.focus,
-                live: timerActive,
-                onTap: () => onGo(NavTarget.focus),
-              ),
-              _BottomItem(
-                label: 'Sync',
-                icon: Icons.sync_rounded,
-                selected: index == NavTarget.nearby,
-                onTap: () => onGo(NavTarget.nearby),
-              ),
-              _BottomItem(
-                label: 'More',
-                icon: Icons.grid_view_rounded,
-                selected:
-                    index >= NavTarget.calendar &&
-                    index != NavTarget.focus &&
-                    index != NavTarget.nearby,
-                onTap: onMore,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomItem extends StatelessWidget {
-  const _BottomItem({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    this.badge = 0,
-    this.live = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  final int badge;
-  final bool live;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.input),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    icon,
-                    size: 21,
-                    color: selected ? colors.primary : colors.inkMuted,
-                  ),
-                  if (badge > 0)
-                    Positioned(
-                      top: -3,
-                      right: -6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 3,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.accent,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          '$badge',
-                          style: AppText.bodySmall.copyWith(
-                            color: Colors.white,
-                            fontSize: 7.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (live)
-                    Positioned(
-                      top: -1,
-                      right: -3,
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: colors.accent,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: AppText.bodySmall.copyWith(
-                  color: selected ? colors.primary : colors.inkMuted,
-                  fontSize: 9.5,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

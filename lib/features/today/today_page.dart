@@ -96,19 +96,21 @@ class TodayPage extends ConsumerWidget {
               '${openTasks.length} ${openTasks.length == 1 ? 'thread' : 'threads'} '
               'open. Choose what deserves the day.',
           actions: [
-            OutlinedButton.icon(
-              onPressed: () {
-                ref.read(selectedDateProvider.notifier).state = today;
-                ref.read(navIndexProvider.notifier).state = NavTarget.planner;
-              },
-              icon: const Icon(Icons.view_week_outlined, size: 17),
-              label: const Text('Plan'),
-            ),
-            FilledButton.icon(
-              onPressed: () => showQuickCapture(context, plannedDate: today),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Capture'),
-            ),
+            if (!Layout.isCompact(context)) ...[
+              OutlinedButton.icon(
+                onPressed: () {
+                  ref.read(selectedDateProvider.notifier).state = today;
+                  ref.read(navIndexProvider.notifier).state = NavTarget.planner;
+                },
+                icon: const Icon(Icons.view_week_outlined, size: 17),
+                label: const Text('Plan'),
+              ),
+              FilledButton.icon(
+                onPressed: () => showQuickCapture(context, plannedDate: today),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Capture'),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: AppSpace.xxl),
@@ -232,6 +234,7 @@ class TodayPage extends ConsumerWidget {
 
     return PageWidth(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: AppSpace.x6),
         child: tasksAsync.isLoading && views.isEmpty
             ? const Column(
@@ -239,7 +242,14 @@ class TodayPage extends ConsumerWidget {
                 children: [SizedBox(height: 120), LoadingBlock(height: 360)],
               )
             : !isWide
-            ? main
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  main,
+                  const SizedBox(height: AppSpace.xxl),
+                  rail,
+                ],
+              )
             : Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

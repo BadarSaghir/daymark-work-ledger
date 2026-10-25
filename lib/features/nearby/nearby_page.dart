@@ -786,6 +786,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
 
     return PageWidth(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: AppSpace.x6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

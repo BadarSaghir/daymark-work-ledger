@@ -33,10 +33,12 @@ class LocalAccountGate extends ConsumerWidget {
     if (local == null) return const SizedBox.shrink();
     return Scaffold(
       backgroundColor: colors.canvas,
-      body: CanvasWash(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpace.xl),
+      body: SafeArea(
+        child: CanvasWash(
+          child: Center(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(AppSpace.xl),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 540),
               child: Column(

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/app_colors.dart';
+import '../core/ui/enum_ui.dart';
 import '../core/ui/sheets.dart';
+import '../core/utils/date_keys.dart';
 import '../data/models/enums.dart';
 import '../data/models/task_view.dart';
 import '../state/tasks_controller.dart';
 import '../state/timer_controller.dart';
+import 'task_editor.dart';
 
 Future<void> toggleTaskDone(
   BuildContext context,
@@ -102,6 +107,120 @@ Future<void> toggleTaskTimer(
       showToast(context, 'Could not start the timer: $error');
     }
   }
+}
+
+/// Mobile quick actions. Long-pressing or tapping the overflow control on a
+/// task card opens this sheet, keeping common actions within thumb reach.
+Future<void> showTaskQuickActions(
+  BuildContext context,
+  WidgetRef ref,
+  TaskView view, {
+  VoidCallback? onOpen,
+}) async {
+  HapticFeedback.mediumImpact();
+  final today = dateKey(DateTime.now());
+  final timerActive =
+      ref.read(timerProvider).value?.session?.taskId == view.task.id;
+  await showAppSheet<void>(
+    context,
+    (sheetContext) => AppSheet(
+      title: view.task.title,
+      subtitle: '${view.task.kind.label} · ${view.task.status.label}',
+      icon: view.task.kind.icon,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (onOpen != null)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              minTileHeight: 54,
+              leading: const Icon(Icons.open_in_new_rounded, size: 21),
+              title: const Text('Open task'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                onOpen();
+              },
+            ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            minTileHeight: 54,
+            leading: Icon(
+              view.isDone
+                  ? Icons.undo_rounded
+                  : Icons.check_circle_outline_rounded,
+              size: 21,
+              color: view.isDone
+                  ? sheetContext.colors.inkMuted
+                  : sheetContext.colors.green,
+            ),
+            title: Text(view.isDone ? 'Reopen task' : 'Mark complete'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              toggleTaskDone(context, ref, view);
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            minTileHeight: 54,
+            leading: Icon(
+              timerActive
+                  ? Icons.pause_circle_outline_rounded
+                  : Icons.play_circle_outline_rounded,
+              size: 21,
+              color: sheetContext.colors.accent,
+            ),
+            title: const Text('Track time'),
+            subtitle: Text(
+              timerActive
+                  ? 'Pause or resume this task’s timer'
+                  : 'Start a timer for this task',
+            ),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              toggleTaskTimer(context, ref, view);
+            },
+          ),
+          if (view.task.plannedDate != today)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              minTileHeight: 54,
+              leading: Icon(
+                Icons.today_rounded,
+                size: 21,
+                color: sheetContext.colors.primary,
+              ),
+              title: const Text('Plan for today'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                ref
+                    .read(tasksProvider.notifier)
+                    .updateTask(
+                      view.task.copyWith(
+                        plannedDate: today,
+                        status: view.isDone
+                            ? view.task.status
+                            : TaskStatus.planned,
+                      ),
+                      summary: 'Planned for today',
+                    );
+              },
+            ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            minTileHeight: 54,
+            leading: const Icon(Icons.edit_outlined, size: 21),
+            title: const Text('Edit task'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              showTaskEditor(context, existing: view);
+            },
+          ),
+        ],
+      ),
+      onClose: () => Navigator.of(sheetContext).pop(),
+    ),
+    maxWidth: 560,
+  );
 }
 
 /// Stops the current timer with a confirmation and returns true if stopped.

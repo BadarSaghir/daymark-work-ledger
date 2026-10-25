@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../core/ui/enum_ui.dart';
 import '../core/ui/feedback.dart';
+import '../core/ui/layout.dart';
 import '../core/ui/surface_card.dart';
 import '../core/utils/date_keys.dart';
 import '../core/utils/durations.dart';
@@ -58,6 +60,7 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     final activeTimer = active.$1;
     final runningTimer = active.$2;
     final done = view.isDone;
+    final mobile = Layout.isCompact(context);
 
     final borderColor = activeTimer
         ? colors.accent.withValues(alpha: 0.55)
@@ -99,12 +102,20 @@ class _TaskCardState extends ConsumerState<TaskCard> {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: widget.onTap,
+            onLongPress: mobile
+                ? () => showTaskQuickActions(
+                    context,
+                    ref,
+                    view,
+                    onOpen: widget.onTap,
+                  )
+                : null,
             hoverColor: Colors.transparent,
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                14,
+                mobile ? 10 : 14,
                 widget.compact ? 11 : 14,
-                10,
+                mobile ? 6 : 10,
                 widget.compact ? 11 : 14,
               ),
               child: Column(
@@ -117,7 +128,10 @@ class _TaskCardState extends ConsumerState<TaskCard> {
                       _DoneToggle(
                         done: done,
                         color: category?.colorValue ?? colors.primary,
-                        onTap: () => toggleTaskDone(context, ref, view),
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          toggleTaskDone(context, ref, view);
+                        },
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -218,12 +232,31 @@ class _TaskCardState extends ConsumerState<TaskCard> {
                       if (widget.trailing != null) ...[
                         const SizedBox(width: 4),
                         widget.trailing!,
+                      ] else if (mobile) ...[
+                        const SizedBox(width: 2),
+                        IconButton(
+                          tooltip: 'Task actions',
+                          onPressed: () => showTaskQuickActions(
+                            context,
+                            ref,
+                            view,
+                            onOpen: widget.onTap,
+                          ),
+                          icon: Icon(
+                            Icons.more_horiz_rounded,
+                            size: 22,
+                            color: colors.inkMuted,
+                          ),
+                        ),
                       ] else if (!done) ...[
                         const SizedBox(width: 4),
                         _TimerButton(
                           active: activeTimer,
                           running: runningTimer,
-                          onTap: () => toggleTaskTimer(context, ref, view),
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            toggleTaskTimer(context, ref, view);
+                          },
                         ),
                       ],
                     ],
@@ -283,6 +316,20 @@ class _DoneToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final touch = Layout.isCompact(context);
+    final circle = AnimatedContainer(
+      duration: AppDurations.fast,
+      width: 23,
+      height: 23,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: done ? color : Colors.transparent,
+        border: Border.all(color: done ? color : colors.lineStrong, width: 1.5),
+      ),
+      child: done
+          ? Icon(Icons.check_rounded, size: 14, color: colors.onPrimary)
+          : null,
+    );
     return Semantics(
       button: true,
       label: done ? 'Reopen task' : 'Complete task',
@@ -291,22 +338,19 @@ class _DoneToggle extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(99),
-          child: AnimatedContainer(
-            duration: AppDurations.fast,
-            width: 23,
-            height: 23,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: done ? color : Colors.transparent,
-              border: Border.all(
-                color: done ? color : colors.lineStrong,
-                width: 1.5,
-              ),
-            ),
-            child: done
-                ? Icon(Icons.check_rounded, size: 14, color: colors.onPrimary)
-                : null,
-          ),
+          child: touch
+              ? SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: circle,
+                    ),
+                  ),
+                )
+              : circle,
         ),
       ),
     );

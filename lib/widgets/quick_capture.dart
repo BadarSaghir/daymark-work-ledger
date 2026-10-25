@@ -5,6 +5,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../core/ui/enum_ui.dart';
 import '../core/ui/form.dart';
+import '../core/ui/layout.dart';
 import '../core/ui/sheets.dart';
 import '../core/utils/date_keys.dart';
 import '../data/models/enums.dart';
@@ -210,27 +211,29 @@ class _QuickCaptureState extends ConsumerState<QuickCapture> {
               onChanged: (id) => setState(() => _categoryId = id),
             ),
           ],
-          const SizedBox(height: AppSpace.xl),
-          Row(
-            children: [
-              Icon(
-                Icons.keyboard_return_rounded,
-                size: 14,
-                color: colors.inkFaint,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Enter plans it for today · every capture is a real task, '
-                  'not a scratchpad line.',
-                  style: AppText.bodySmall.copyWith(
-                    color: colors.inkFaint,
-                    fontSize: 11.5,
+          if (!Layout.isCompact(context)) ...[
+            const SizedBox(height: AppSpace.xl),
+            Row(
+              children: [
+                Icon(
+                  Icons.keyboard_return_rounded,
+                  size: 14,
+                  color: colors.inkFaint,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Enter plans it for today · every capture is a real task, '
+                    'not a scratchpad line.',
+                    style: AppText.bodySmall.copyWith(
+                      color: colors.inkFaint,
+                      fontSize: 11.5,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );

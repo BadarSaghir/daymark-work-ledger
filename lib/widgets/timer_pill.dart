@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
@@ -86,6 +87,7 @@ class TimerPill extends ConsumerWidget {
               ),
               const SizedBox(width: 10),
               _PillButton(
+                size: compact ? 38 : 32,
                 icon: state.isRunning
                     ? Icons.pause_rounded
                     : Icons.play_arrow_rounded,
@@ -100,6 +102,7 @@ class TimerPill extends ConsumerWidget {
               ),
               const SizedBox(width: 4),
               _PillButton(
+                size: compact ? 38 : 32,
                 icon: Icons.stop_rounded,
                 tooltip: 'Stop and save',
                 onTap: () => confirmStopTimer(context, ref),
@@ -117,11 +120,13 @@ class _PillButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
+    this.size = 32,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -129,16 +134,19 @@ class _PillButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(99),
         child: Container(
-          width: 32,
-          height: 32,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: colors.canvas.withValues(alpha: 0.1),
           ),
-          child: Icon(icon, size: 17, color: colors.canvas),
+          child: Icon(icon, size: size > 32 ? 19 : 17, color: colors.canvas),
         ),
       ),
     );

@@ -56,11 +56,12 @@ class CalendarPage extends ConsumerWidget {
           ),
           label: Text(weekMode ? 'Month' : 'Week'),
         ),
-        FilledButton.icon(
-          onPressed: () => showQuickCapture(context, plannedDate: selected),
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Add work'),
-        ),
+        if (!Layout.isCompact(context))
+          FilledButton.icon(
+            onPressed: () => showQuickCapture(context, plannedDate: selected),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Add work'),
+          ),
       ],
     );
 
@@ -231,6 +232,7 @@ class CalendarPage extends ConsumerWidget {
 
     return PageWidth(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: AppSpace.x6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -286,41 +288,78 @@ class _CalendarNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Row(
+    final label = weekMode
+        ? '${dateLabel(weekDays(selected).first)} – '
+              '${dateLabel(weekDays(selected).last)}'
+        : monthLong(month);
+    final compact = Layout.isCompact(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        IconButton(
-          tooltip: weekMode ? 'Previous week' : 'Previous month',
-          onPressed: onPrevious,
-          icon: const Icon(Icons.chevron_left_rounded, size: 21),
+        Row(
+          children: [
+            IconButton(
+              tooltip: weekMode ? 'Previous week' : 'Previous month',
+              onPressed: onPrevious,
+              icon: const Icon(Icons.chevron_left_rounded, size: 21),
+            ),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: compact ? TextAlign.center : TextAlign.left,
+                style: AppText.bodyMedium.copyWith(color: colors.ink),
+              ),
+            ),
+            IconButton(
+              tooltip: weekMode ? 'Next week' : 'Next month',
+              onPressed: onNext,
+              icon: const Icon(Icons.chevron_right_rounded, size: 21),
+            ),
+            IconButton.filledTonal(
+              tooltip: 'Add work',
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded, size: 18),
+            ),
+          ],
         ),
-        Text(
-          weekMode
-              ? '${dateLabel(weekDays(selected).first)} – '
-                    '${dateLabel(weekDays(selected).last)}'
-              : monthLong(month),
-          style: AppText.bodyMedium.copyWith(color: colors.ink),
-        ),
-        IconButton(
-          tooltip: weekMode ? 'Next week' : 'Next month',
-          onPressed: onNext,
-          icon: const Icon(Icons.chevron_right_rounded, size: 21),
-        ),
-        const SizedBox(width: AppSpace.sm),
-        OutlinedButton(onPressed: onToday, child: const Text('Today')),
-        const Spacer(),
-        Text(
-          'Click a day to inspect it',
-          style: AppText.bodySmall.copyWith(
-            color: colors.inkFaint,
-            fontSize: 11,
+        if (compact)
+          Padding(
+            padding: const EdgeInsets.only(left: AppSpace.xs),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed: onToday,
+                  icon: const Icon(Icons.today_rounded, size: 16),
+                  label: const Text('Today'),
+                ),
+                const Spacer(),
+                Text(
+                  'Tap a day to inspect it',
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            children: [
+              const SizedBox(width: AppSpace.sm),
+              OutlinedButton(onPressed: onToday, child: const Text('Today')),
+              const Spacer(),
+              Text(
+                'Click a day to inspect it',
+                style: AppText.bodySmall.copyWith(
+                  color: colors.inkFaint,
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(width: AppSpace.sm),
-        IconButton.filledTonal(
-          tooltip: 'Add work',
-          onPressed: onAdd,
-          icon: const Icon(Icons.add_rounded, size: 18),
-        ),
       ],
     );
   }
@@ -427,7 +466,7 @@ class _DayTile extends StatelessWidget {
         ? 0.0
         : (focusMs / maxFocus).clamp(0.08, 1.0);
     return SizedBox(
-      height: 96,
+      height: Layout.isCompact(context) ? 76 : 96,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.badge),

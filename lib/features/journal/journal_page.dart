@@ -148,21 +148,19 @@ class _JournalPageState extends ConsumerState<JournalPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        IconButton(
-                          tooltip: 'Previous day',
-                          onPressed: () => _goDate(addDays(selected, -1)),
-                          icon: const Icon(
-                            Icons.chevron_left_rounded,
-                            size: 20,
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 520;
+                  final dateNav = Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Previous day',
+                        onPressed: () => _goDate(addDays(selected, -1)),
+                        icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Text(
                               relativeDayLabel(selected).toUpperCase(),
@@ -173,6 +171,9 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                             ),
                             Text(
                               longDateLabel(selected),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                               style: AppText.displayS.copyWith(
                                 color: colors.ink,
                                 fontSize: 19,
@@ -180,23 +181,15 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                             ),
                           ],
                         ),
-                        IconButton(
-                          tooltip: 'Next day',
-                          onPressed: () => _goDate(addDays(selected, 1)),
-                          icon: const Icon(
-                            Icons.chevron_right_rounded,
-                            size: 20,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isToday(selected))
-                    TextButton(
-                      onPressed: () => _goDate(DateTime.now()),
-                      child: const Text('Today'),
-                    ),
-                  TextButton.icon(
+                      ),
+                      IconButton(
+                        tooltip: 'Next day',
+                        onPressed: () => _goDate(addDays(selected, 1)),
+                        icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                      ),
+                    ],
+                  );
+                  final saveAction = TextButton.icon(
                     onPressed: _dirty ? _save : null,
                     icon: _saving
                         ? const SizedBox(
@@ -212,13 +205,46 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                           ? 'Save now'
                           : savedLabel(_savedAt, DateTime.now()),
                     ),
-                  ),
-                ],
+                  );
+                  if (compact) {
+                    return Column(
+                      children: [
+                        dateNav,
+                        Row(
+                          children: [
+                            if (!isToday(selected))
+                              TextButton.icon(
+                                onPressed: () => _goDate(DateTime.now()),
+                                icon: const Icon(Icons.today_rounded, size: 16),
+                                label: const Text('Today'),
+                              ),
+                            const Spacer(),
+                            saveAction,
+                          ],
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: dateNav),
+                      if (!isToday(selected))
+                        TextButton(
+                          onPressed: () => _goDate(DateTime.now()),
+                          child: const Text('Today'),
+                        ),
+                      saveAction,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: AppSpace.md),
               Divider(color: colors.line),
               const SizedBox(height: AppSpace.md),
-              Row(
+              Wrap(
+                spacing: AppSpace.xl,
+                runSpacing: AppSpace.sm,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _ScalePicker(
                     label: 'Mood',
@@ -229,7 +255,6 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                       _scheduleSave();
                     },
                   ),
-                  const SizedBox(width: AppSpace.xxl),
                   _ScalePicker(
                     label: 'Energy',
                     value: _energy,
@@ -239,7 +264,6 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                       _scheduleSave();
                     },
                   ),
-                  const Spacer(),
                   Text(
                     '$wordCount ${wordCount == 1 ? 'word' : 'words'}',
                     style: AppText.monoData.copyWith(
@@ -411,6 +435,7 @@ class _JournalPageState extends ConsumerState<JournalPage> {
 
     return PageWidth(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: AppSpace.x6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -428,11 +453,12 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                     icon: Icons.local_fire_department_outlined,
                     color: colors.gold,
                   ),
-                OutlinedButton.icon(
-                  onPressed: () => _goDate(DateTime.now()),
-                  icon: const Icon(Icons.edit_note_rounded, size: 17),
-                  label: const Text('Write today'),
-                ),
+                if (!Layout.isCompact(context))
+                  OutlinedButton.icon(
+                    onPressed: () => _goDate(DateTime.now()),
+                    icon: const Icon(Icons.edit_note_rounded, size: 17),
+                    label: const Text('Write today'),
+                  ),
               ],
             ),
             const SizedBox(height: AppSpace.xl),
@@ -502,6 +528,9 @@ class _ScalePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final compact = Layout.isCompact(context);
+    final target = compact ? 32.0 : 18.0;
+    final dot = compact ? 16.0 : 14.0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -514,21 +543,24 @@ class _ScalePicker extends StatelessWidget {
           InkWell(
             onTap: () => onChange(i),
             borderRadius: BorderRadius.circular(99),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: AnimatedContainer(
-                duration: AppDurations.fast,
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: value != null && i <= value!
-                      ? color
-                      : colors.surfaceSunken,
-                  border: Border.all(
+            child: SizedBox(
+              width: target,
+              height: target,
+              child: Center(
+                child: AnimatedContainer(
+                  duration: AppDurations.fast,
+                  width: dot,
+                  height: dot,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     color: value != null && i <= value!
                         ? color
-                        : colors.lineStrong,
+                        : colors.surfaceSunken,
+                    border: Border.all(
+                      color: value != null && i <= value!
+                          ? color
+                          : colors.lineStrong,
+                    ),
                   ),
                 ),
               ),

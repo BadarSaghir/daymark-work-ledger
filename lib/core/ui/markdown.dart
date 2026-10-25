@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
+import 'layout.dart';
 
 MarkdownStyleSheet markdownStyleSheet(BuildContext context) {
   final colors = context.colors;
@@ -200,6 +201,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final compact = Layout.isCompact(context);
     return Container(
       decoration: BoxDecoration(
         color: colors.surfaceSunken.withValues(alpha: 0.45),
@@ -222,13 +224,13 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                         children: [
                           _ToolButton(
                             icon: Icons.format_bold_rounded,
-                            tooltip: 'Bold (Ctrl+B)',
+                            tooltip: compact ? 'Bold' : 'Bold (Ctrl+B)',
                             onTap: () =>
                                 _insert('**', '**', placeholder: 'bold'),
                           ),
                           _ToolButton(
                             icon: Icons.format_italic_rounded,
-                            tooltip: 'Italic (Ctrl+I)',
+                            tooltip: compact ? 'Italic' : 'Italic (Ctrl+I)',
                             onTap: () =>
                                 _insert('_', '_', placeholder: 'italic'),
                           ),
@@ -343,15 +345,20 @@ class _ToolButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final compact = Layout.isCompact(context);
     return Tooltip(
       message: tooltip,
       child: InkWell(
         borderRadius: BorderRadius.circular(7),
         onTap: onTap,
         child: SizedBox(
-          width: 32,
-          height: 32,
-          child: Icon(icon, size: 17, color: colors.inkMuted),
+          width: compact ? 40 : 32,
+          height: compact ? 40 : 32,
+          child: Icon(
+            icon,
+            size: compact ? 19 : 17,
+            color: colors.inkMuted,
+          ),
         ),
       ),
     );

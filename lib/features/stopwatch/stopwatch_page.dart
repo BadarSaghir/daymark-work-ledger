@@ -87,7 +87,7 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
               icon: const Icon(Icons.edit_calendar_outlined, size: 17),
               label: const Text('Log by hand'),
             ),
-            if (!active)
+            if (!active && !Layout.isCompact(context))
               FilledButton.icon(
                 onPressed: () => _startFocus(),
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
@@ -362,36 +362,39 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
             ],
           ),
         ),
-        const SizedBox(height: AppSpace.lg),
-        SurfaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'SHORTCUTS',
-                style: AppText.label.copyWith(color: colors.inkFaint),
-              ),
-              const SizedBox(height: AppSpace.md),
-              _Shortcut(label: 'Command palette', keys: '⌘ K'),
-              _Shortcut(label: 'Capture work', keys: '⌘ N'),
-              _Shortcut(label: 'Today', keys: '⌘ 1'),
-              _Shortcut(label: 'Focus', keys: '⌘ 5'),
-              const SizedBox(height: AppSpace.md),
-              Text(
-                'On Windows and Linux, use Ctrl instead of ⌘.',
-                style: AppText.bodySmall.copyWith(
-                  color: colors.inkFaint,
-                  fontSize: 10.5,
+        if (!Layout.isCompact(context)) ...[
+          const SizedBox(height: AppSpace.lg),
+          SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SHORTCUTS',
+                  style: AppText.label.copyWith(color: colors.inkFaint),
                 ),
-              ),
-            ],
+                const SizedBox(height: AppSpace.md),
+                _Shortcut(label: 'Command palette', keys: '⌘ K'),
+                _Shortcut(label: 'Capture work', keys: '⌘ N'),
+                _Shortcut(label: 'Today', keys: '⌘ 1'),
+                _Shortcut(label: 'Focus', keys: '⌘ 5'),
+                const SizedBox(height: AppSpace.md),
+                Text(
+                  'On Windows and Linux, use Ctrl instead of ⌘.',
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
 
     return PageWidth(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: AppSpace.x6),
         child: isWide
             ? Row(

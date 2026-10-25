@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import 'layout.dart';
 
 /// Bottom sheet on compact screens, centred dialog on medium/expanded.
 Future<T?> showAppSheet<T>(
@@ -15,8 +16,7 @@ Future<T?> showAppSheet<T>(
     AppSpace.xl,
   ),
 }) {
-  final width = MediaQuery.sizeOf(context).width;
-  final compact = width < AppBreakpoints.compact;
+  final compact = Layout.isCompact(context);
 
   if (compact) {
     return showModalBottomSheet<T>(
@@ -27,20 +27,26 @@ Future<T?> showAppSheet<T>(
       enableDrag: dismissible,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        final bottomInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        final media = MediaQuery.of(sheetContext);
+        final bottomInset = media.viewInsets.bottom;
+        final safeBottom = media.padding.bottom;
+        final effectivePadding = padding.copyWith(
+          bottom: padding.bottom + safeBottom,
+        );
         return Padding(
           padding: EdgeInsets.only(bottom: bottomInset),
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.93,
-            ),
+            constraints: BoxConstraints(maxHeight: media.size.height * 0.93),
             child: Material(
               color: sheetContext.colors.surface,
               clipBehavior: Clip.antiAlias,
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(AppRadius.sheet),
               ),
-              child: Padding(padding: padding, child: builder(sheetContext)),
+              child: Padding(
+                padding: effectivePadding,
+                child: builder(sheetContext),
+              ),
             ),
           ),
         );
@@ -102,7 +108,7 @@ class AppSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final compact = MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+    final compact = Layout.isCompact(context);
     Widget content = child;
     if (maxContentWidth != null) {
       content = Align(

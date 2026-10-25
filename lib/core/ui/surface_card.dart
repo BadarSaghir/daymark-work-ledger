@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import 'layout.dart';
 
 /// The primary container language: warm surface, hairline border, generous
 /// radius. No drop shadows unless elevated (sheets/popovers).
@@ -137,6 +138,21 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+
+    // The mobile shell owns the page title in its app bar. Page headers become
+    // a compact action strip so the screen opens with content, not marketing.
+    if (Layout.isCompact(context)) {
+      if (actions.isEmpty) return const SizedBox.shrink();
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: AppSpace.sm,
+          runSpacing: AppSpace.sm,
+          children: actions,
+        ),
+      );
+    }
+
     final heading = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,

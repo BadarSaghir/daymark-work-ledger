@@ -366,6 +366,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
               child: PageWidth(
                 maxWidth: 1180,
                 child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.only(bottom: AppSpace.x6),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -538,12 +539,41 @@ class _DetailTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final compact = Layout.isCompact(context);
+    final menu = PopupMenuButton<String>(
+      tooltip: 'More',
+      onSelected: (value) {
+        if (value == 'share') onShare();
+        if (value == 'archive') onArchive();
+        if (value == 'delete') onDelete();
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: 'share',
+          child: MenuAction(
+            icon: Icons.ios_share_rounded,
+            label: 'Share task bundle',
+          ),
+        ),
+        PopupMenuItem(
+          value: 'archive',
+          child: MenuAction(icon: Icons.archive_outlined, label: 'Archive'),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: MenuAction(
+            icon: Icons.delete_outline_rounded,
+            label: 'Delete',
+          ),
+        ),
+      ],
+    );
     return Container(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: colors.line)),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.lg,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? AppSpace.sm : AppSpace.lg,
         vertical: AppSpace.sm,
       ),
       child: Row(
@@ -551,7 +581,7 @@ class _DetailTopBar extends StatelessWidget {
           IconButton(
             tooltip: 'Back',
             onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded, size: 20),
+            icon: const Icon(Icons.arrow_back_rounded, size: 22),
           ),
           const SizedBox(width: AppSpace.xs),
           Expanded(
@@ -560,53 +590,47 @@ class _DetailTopBar extends StatelessWidget {
               style: AppText.label.copyWith(color: colors.inkFaint),
             ),
           ),
-          OutlinedButton.icon(
-            onPressed: onTimer,
-            icon: Icon(
-              timerRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              size: 17,
+          if (compact) ...[
+            IconButton(
+              tooltip: timerActive
+                  ? (timerRunning ? 'Pause timer' : 'Resume timer')
+                  : 'Track time',
+              onPressed: onTimer,
+              icon: Icon(
+                timerRunning
+                    ? Icons.pause_circle_rounded
+                    : Icons.play_circle_rounded,
+                color: timerActive ? colors.accent : colors.primary,
+                size: 27,
+              ),
             ),
-            label: Text(
-              timerActive ? (timerRunning ? 'Pause' : 'Resume') : 'Track time',
+            IconButton(
+              tooltip: 'Edit task',
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 22),
             ),
-          ),
-          const SizedBox(width: AppSpace.sm),
-          FilledButton.icon(
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined, size: 16),
-            label: const Text('Edit'),
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) {
-              if (value == 'share') onShare();
-              if (value == 'archive') onArchive();
-              if (value == 'delete') onDelete();
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'share',
-                child: MenuAction(
-                  icon: Icons.ios_share_rounded,
-                  label: 'Share task bundle',
-                ),
+            menu,
+          ] else ...[
+            OutlinedButton.icon(
+              onPressed: onTimer,
+              icon: Icon(
+                timerRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                size: 17,
               ),
-              PopupMenuItem(
-                value: 'archive',
-                child: MenuAction(
-                  icon: Icons.archive_outlined,
-                  label: 'Archive',
-                ),
+              label: Text(
+                timerActive
+                    ? (timerRunning ? 'Pause' : 'Resume')
+                    : 'Track time',
               ),
-              PopupMenuItem(
-                value: 'delete',
-                child: MenuAction(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Delete',
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            FilledButton.icon(
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Edit'),
+            ),
+            menu,
+          ],
         ],
       ),
     );
@@ -623,6 +647,7 @@ class _DetailHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final task = view.task;
+    final compact = Layout.isCompact(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -638,9 +663,13 @@ class _DetailHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 7),
-              Text(
-                view.category!.name,
-                style: AppText.label.copyWith(color: colors.inkMuted),
+              Flexible(
+                child: Text(
+                  view.category!.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.label.copyWith(color: colors.inkMuted),
+                ),
               ),
               const SizedBox(width: 10),
             ],
@@ -657,12 +686,11 @@ class _DetailHeader extends StatelessWidget {
         const SizedBox(height: AppSpace.sm),
         SelectableText(
           task.title,
-          style: (Theme.of(context).textTheme.displayLarge ?? AppText.displayL)
-              .copyWith(
-                color: task.isDone ? colors.inkMuted : colors.ink,
-                decoration: task.isDone ? TextDecoration.lineThrough : null,
-                decorationColor: colors.inkFaint,
-              ),
+          style: (compact ? AppText.displayM : AppText.displayL).copyWith(
+            color: task.isDone ? colors.inkMuted : colors.ink,
+            decoration: task.isDone ? TextDecoration.lineThrough : null,
+            decorationColor: colors.inkFaint,
+          ),
         ),
         const SizedBox(height: AppSpace.md),
         Wrap(
