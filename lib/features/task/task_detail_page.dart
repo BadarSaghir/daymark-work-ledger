@@ -28,6 +28,7 @@ import '../../data/models/subtask.dart';
 import '../../data/models/task_attachment.dart';
 import '../../data/models/task_view.dart';
 import '../../data/models/time_entry.dart';
+import '../../data/services/task_attachment_service.dart';
 import '../../state/repository_providers.dart';
 import '../../state/tasks_controller.dart';
 import '../../state/timer_controller.dart';
@@ -100,22 +101,36 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       return;
     }
     if (picked.isEmpty) return;
+    late final TaskAttachmentService service;
     try {
-      final service = await ref.read(taskAttachmentServiceProvider.future);
-      for (final file in picked) {
-        await service.addFile(widget.taskId, File(file.path));
-      }
-      await _loadHistory();
-      if (mounted) {
-        showToast(
-          context,
-          picked.length == 1
-              ? 'File attached.'
-              : '${picked.length} files attached.',
-        );
-      }
+      service = await ref.read(taskAttachmentServiceProvider.future);
     } catch (error) {
       if (mounted) showToast(context, 'Could not attach that file: $error');
+      return;
+    }
+    var added = 0;
+    Object? failure;
+    for (final file in picked) {
+      try {
+        await service.addFile(widget.taskId, File(file.path));
+        added++;
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    await _loadHistory();
+    if (!mounted) return;
+    if (failure == null) {
+      showToast(
+        context,
+        picked.length == 1
+            ? 'File attached.'
+            : '${picked.length} files attached.',
+      );
+    } else if (added == 0) {
+      showToast(context, 'Could not attach that file: $failure');
+    } else {
+      showToast(context, '$added of ${picked.length} files attached: $failure');
     }
   }
 
