@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Daymark
+GenericName=Work ledger
+Comment=Every effort, marked.
+Exec=daymark
+Icon=daymark
+Terminal=false
+Categories=Office;
+Keywords=work;tasks;time;journal;ledger;offline;
+StartupNotify=true
+StartupWMClass=com.daymark.daymark

@@ -18,6 +18,7 @@ import '../../features/planner/planner_page.dart';
 import '../../features/settings/settings_page.dart';
 import '../../features/stopwatch/stopwatch_page.dart';
 import '../../data/models/task_view.dart';
+import '../../data/services/backup_service.dart';
 import '../../features/today/today_page.dart';
 import '../../state/backup_controller.dart';
 import '../../state/repository_providers.dart';
@@ -84,24 +85,29 @@ class _AppShellState extends ConsumerState<AppShell> {
   Future<void> _autoBackup() async {
     try {
       final settings = await ref.read(settingsProvider.future);
-      if (!settings.autoBackup || !settings.onboarded) return;
-      final service = await ref.read(backupServiceProvider.future);
-      final result = await service.maybeCreateDailyBackup(settings);
-      if (result?.file != null) {
-        await ref.read(settingsProvider.notifier).markBackupAt(DateTime.now());
-        ref.invalidate(backupListProvider);
+      if (!settings.onboarded) return;
+
+      BackupResult? localBackup;
+      if (settings.autoBackup) {
+        final service = await ref.read(backupServiceProvider.future);
+        localBackup = await service.maybeCreateDailyBackup(settings);
+        if (localBackup?.file != null) {
+          await ref
+              .read(settingsProvider.notifier)
+              .markBackupAt(DateTime.now());
+          ref.invalidate(backupListProvider);
+        }
       }
+
+      // Drive mirroring is independent of the local daily-backup switch.
       final drive = await ref.read(googleDriveServiceProvider.future);
       final config = await drive.loadConfig();
-      if (config.autoUpload && config.hasAccount) {
-        if (result?.file != null) {
-          await drive.uploadBackup(
-            result!.file!,
-            accountId: config.activeAccountId,
-          );
-        } else {
-          await drive.autoUploadIfDue();
-        }
+      if (!config.autoUpload || !config.hasAccount) return;
+      final file = localBackup?.file;
+      if (file != null) {
+        await drive.uploadBackup(file, accountId: config.activeAccountId);
+      } else {
+        await drive.autoUploadIfDue();
       }
     } catch (_) {
       // A failed automatic backup must never interrupt the workspace.
