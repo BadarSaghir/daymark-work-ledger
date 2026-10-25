@@ -8,6 +8,7 @@ import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../data/models/task_view.dart';
 import '../../app/routes.dart';
+import '../../features/accounts/local_account_ui.dart';
 import '../../state/settings_controller.dart';
 import '../../state/tasks_controller.dart';
 import '../../state/ui_state.dart';
@@ -109,6 +110,15 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
             hint: 'Focus, output, and estimate accuracy',
             icon: Icons.insights_rounded,
             run: () => _go(NavTarget.insights),
+          ),
+          _PaletteCommand(
+            label: 'Switch local account',
+            hint: 'Open another remembered ledger',
+            icon: Icons.switch_account_rounded,
+            run: () {
+              widget.onClose();
+              showLocalAccountSwitcher(context);
+            },
           ),
         ].where((command) {
           return query.isEmpty ||

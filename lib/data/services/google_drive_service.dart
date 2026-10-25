@@ -67,9 +67,14 @@ class GoogleDriveAccount {
 
   String get label => name.trim().isEmpty ? email : '$name · $email';
 
+  /// A remembered account can be signed out without being forgotten. The
+  /// email, label, and Drive folder stay available for a one-tap return.
+  bool get isSignedIn => refreshToken.trim().isNotEmpty;
+
   GoogleDriveAccount copyWith({
     String? name,
     String? refreshToken,
+    bool clearRefreshToken = false,
     String? folderId,
     DateTime? connectedAt,
   }) {
@@ -77,7 +82,9 @@ class GoogleDriveAccount {
       id: id,
       email: email,
       name: name ?? this.name,
-      refreshToken: refreshToken ?? this.refreshToken,
+      refreshToken: clearRefreshToken
+          ? ''
+          : (refreshToken ?? this.refreshToken),
       folderId: folderId ?? this.folderId,
       connectedAt: connectedAt ?? this.connectedAt,
     );

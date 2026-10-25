@@ -255,6 +255,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       ),
       builder: (sheetContext) {
         final colors = sheetContext.colors;
+        final local = ref.read(localAccountProvider);
         final items = const [
           (NavTarget.calendar, Icons.calendar_month_outlined, 'Calendar'),
           (NavTarget.journal, Icons.edit_note_rounded, 'Journal'),
@@ -289,7 +290,35 @@ class _AppShellState extends ConsumerState<AppShell> {
                 'More of Daymark',
                 style: Theme.of(sheetContext).textTheme.titleLarge,
               ),
-              const SizedBox(height: AppSpace.lg),
+              const SizedBox(height: AppSpace.md),
+              if (local != null) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.switch_account_rounded,
+                    size: 20,
+                    color: colors.primary,
+                  ),
+                  title: Text('Local account · ${local.active.name}'),
+                  subtitle: Text(
+                    '${local.accounts.length} remembered on this device',
+                    style: AppText.bodySmall.copyWith(
+                      color: colors.inkFaint,
+                      fontSize: 10.5,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.unfold_more_rounded,
+                    size: 18,
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    showLocalAccountSwitcher(context);
+                  },
+                ),
+                Divider(color: colors.line),
+                const SizedBox(height: AppSpace.sm),
+              ],
               for (final (target, icon, label) in items)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
