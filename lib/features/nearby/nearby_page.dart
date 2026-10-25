@@ -20,9 +20,11 @@ import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../core/utils/durations.dart';
+import '../../app/routes.dart';
 import '../../data/models/journal_entry.dart';
 import '../../data/services/backup_service.dart';
 import '../../data/services/lan_sync_service.dart';
+import '../../data/services/task_bundle_service.dart';
 import '../../state/backup_controller.dart';
 import '../../state/categories_controller.dart';
 import '../../state/journal_controller.dart';
@@ -32,6 +34,7 @@ import '../../state/stats_providers.dart';
 import '../../state/tasks_controller.dart';
 import '../../state/timer_controller.dart';
 import '../../widgets/quick_capture.dart';
+import '../../widgets/task_picker.dart';
 
 class NearbyPage extends ConsumerStatefulWidget {
   const NearbyPage({super.key});
@@ -113,6 +116,8 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
             context,
             newest.isSnapshot
                 ? 'A snapshot from ${newest.fromName} arrived.'
+                : newest.isTask
+                ? 'A task from ${newest.fromName} is ready to import.'
                 : 'Received “${newest.title}” from ${newest.fromName}.',
             duration: const Duration(seconds: 4),
           );
@@ -301,6 +306,40 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
     if (done == true) {
       await _rememberPair(peer, pin);
       if (mounted) showToast(context, 'File sent to ${peer.name}.');
+    }
+  }
+
+  Future<void> _sendTask(LanPeer peer) async {
+    final service = _service;
+    if (service == null) return;
+    final views = await ref.read(tasksProvider.future);
+    if (!mounted) return;
+    final view = await showTaskPicker(context, views);
+    if (view == null || !mounted) return;
+    final pin = await _pinFor(peer);
+    if (pin == null) return;
+    final done = await _runBusy<bool>('Packing task…', () async {
+      final bundles = await ref.read(taskBundleServiceProvider.future);
+      final export = await bundles.exportTask(view.task.id);
+      await service.sendTask(
+        peer,
+        pin,
+        bytes: export.bytes,
+        title: export.title,
+        fileName: export.fileName,
+      );
+      return true;
+    });
+    if (done == true) {
+      await _rememberPair(peer, pin);
+      if (mounted) {
+        showToast(
+          context,
+          '“${view.task.title}” sent to ${peer.name}. Import it from their '
+          'inbox whenever they are ready.',
+          duration: const Duration(seconds: 4),
+        );
+      }
     }
   }
 
@@ -617,6 +656,55 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
     );
   }
 
+  Future<void> _importTask(LanInboxItem item) async {
+    final path = item.filePath;
+    if (path == null || !await File(path).exists()) {
+      if (mounted) showToast(context, 'That task bundle is no longer here.');
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Import this task?',
+      message:
+          'Notes, steps, tracked time, reminders, and files arrive with it. If '
+          'the same task exists here, Daymark updates it when the incoming copy '
+          'is newer. Every other task stays untouched.',
+      confirmLabel: 'Import task',
+      icon: Icons.task_alt_rounded,
+    );
+    if (!confirmed) return;
+    final bundles = await ref.read(taskBundleServiceProvider.future);
+    final result = await _runBusy<TaskBundleImportResult>(
+      'Importing task…',
+      () => bundles.importFile(File(path)),
+    );
+    if (result == null || !mounted) return;
+    await _service?.markHistoryForItem(
+      item.id,
+      result.keptLocal ? 'kept-local' : 'imported',
+    );
+    _refreshAll();
+    if (!mounted) return;
+    if (result.keptLocal) {
+      showToast(
+        context,
+        'Your local copy of “${result.title}” is newer, so it was kept. '
+        'Share it back to bring the other device up to date.',
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+    showToast(
+      context,
+      result.isNew
+          ? '“${result.title}” imported as a new task.'
+          : '“${result.title}” updated on this device.',
+      duration: const Duration(seconds: 3),
+    );
+    await openTaskDetail(context, result.taskId);
+  }
+
   Future<void> _saveTextToJournal(LanInboxItem item) async {
     final text = item.text?.trim() ?? '';
     if (text.isEmpty) return;
@@ -784,6 +872,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
           items: _inbox,
           busy: _busy,
           onRestoreSnapshot: _restoreSnapshot,
+          onImportTask: _importTask,
           onSaveText: _saveTextToJournal,
           onTextToTask: _textToTask,
           onDelete: _deleteInboxItem,
@@ -890,6 +979,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
             onPull: () => _pullSnapshot(paired),
             onNote: () => _sendText(paired),
             onFile: () => _sendFile(paired),
+            onTask: () => _sendTask(paired),
           ),
           const SizedBox(height: AppSpace.lg),
         ],
@@ -901,6 +991,7 @@ class _NearbyPageState extends ConsumerState<NearbyPage> {
           onPullSnapshot: _pullSnapshot,
           onSendText: _sendText,
           onSendFile: _sendFile,
+          onSendTask: _sendTask,
           onManual: _manualConnect,
         ),
       ],
@@ -1402,6 +1493,7 @@ class _PairedSendCard extends StatelessWidget {
     required this.onPull,
     required this.onNote,
     required this.onFile,
+    required this.onTask,
   });
 
   final LanPeer peer;
@@ -1410,6 +1502,7 @@ class _PairedSendCard extends StatelessWidget {
   final VoidCallback onPull;
   final VoidCallback onNote;
   final VoidCallback onFile;
+  final VoidCallback onTask;
 
   @override
   Widget build(BuildContext context) {
@@ -1454,6 +1547,11 @@ class _PairedSendCard extends StatelessWidget {
             spacing: AppSpace.sm,
             runSpacing: AppSpace.sm,
             children: [
+              FilledButton.icon(
+                onPressed: busy ? null : onTask,
+                icon: const Icon(Icons.task_alt_rounded, size: 16),
+                label: const Text('Send task'),
+              ),
               FilledButton.icon(
                 onPressed: busy ? null : onNote,
                 icon: const Icon(Icons.sticky_note_2_outlined, size: 16),
@@ -1816,12 +1914,15 @@ class _HistoryRow extends StatelessWidget {
     final icon = switch (entry.kind) {
       'snapshot' => Icons.inventory_2_outlined,
       'text' => Icons.sticky_note_2_outlined,
+      'task' => Icons.task_alt_rounded,
       _ => Icons.attach_file_rounded,
     };
     final (statusLabel, statusColor) = switch (entry.status) {
       'sent' => ('Sent', colors.blue),
       'received' => ('In inbox', colors.accent),
       'restored' => ('Restored', colors.green),
+      'imported' => ('Imported', colors.green),
+      'kept-local' => ('Local kept', colors.gold),
       'journaled' => ('In journal', colors.gold),
       'removed' => ('Removed', colors.inkFaint),
       _ => (entry.status, colors.inkFaint),
@@ -2559,6 +2660,7 @@ class _PeersCard extends StatelessWidget {
     required this.onPullSnapshot,
     required this.onSendText,
     required this.onSendFile,
+    required this.onSendTask,
     required this.onManual,
   });
 
@@ -2569,6 +2671,7 @@ class _PeersCard extends StatelessWidget {
   final ValueChanged<LanPeer> onPullSnapshot;
   final ValueChanged<LanPeer> onSendText;
   final ValueChanged<LanPeer> onSendFile;
+  final ValueChanged<LanPeer> onSendTask;
   final VoidCallback onManual;
 
   @override
@@ -2673,6 +2776,7 @@ class _PeersCard extends StatelessWidget {
                 onPullSnapshot: () => onPullSnapshot(peer),
                 onSendText: () => onSendText(peer),
                 onSendFile: () => onSendFile(peer),
+                onSendTask: () => onSendTask(peer),
               ),
         ],
       ),
@@ -2688,6 +2792,7 @@ class _PeerRow extends StatelessWidget {
     required this.onPullSnapshot,
     required this.onSendText,
     required this.onSendFile,
+    required this.onSendTask,
   });
 
   final LanPeer peer;
@@ -2696,6 +2801,7 @@ class _PeerRow extends StatelessWidget {
   final VoidCallback onPullSnapshot;
   final VoidCallback onSendText;
   final VoidCallback onSendFile;
+  final VoidCallback onSendTask;
 
   @override
   Widget build(BuildContext context) {
@@ -2760,6 +2866,9 @@ class _PeerRow extends StatelessWidget {
                 ),
                 onSelected: (value) {
                   switch (value) {
+                    case 'task':
+                      onSendTask();
+                      break;
                     case 'text':
                       onSendText();
                       break;
@@ -2769,6 +2878,13 @@ class _PeerRow extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'task',
+                    child: MenuAction(
+                      icon: Icons.task_alt_rounded,
+                      label: 'Send one task',
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'text',
                     child: MenuAction(
@@ -2793,6 +2909,11 @@ class _PeerRow extends StatelessWidget {
             runSpacing: AppSpace.sm,
             children: [
               FilledButton.tonalIcon(
+                onPressed: busy ? null : onSendTask,
+                icon: const Icon(Icons.task_alt_rounded, size: 15),
+                label: const Text('Send task'),
+              ),
+              FilledButton.tonalIcon(
                 onPressed: busy ? null : onSendSnapshot,
                 icon: const Icon(Icons.upload_file_rounded, size: 15),
                 label: const Text('Send my ledger'),
@@ -2815,6 +2936,7 @@ class _InboxPanel extends StatelessWidget {
     required this.items,
     required this.busy,
     required this.onRestoreSnapshot,
+    required this.onImportTask,
     required this.onSaveText,
     required this.onTextToTask,
     required this.onDelete,
@@ -2823,6 +2945,7 @@ class _InboxPanel extends StatelessWidget {
   final List<LanInboxItem> items;
   final bool busy;
   final ValueChanged<LanInboxItem> onRestoreSnapshot;
+  final ValueChanged<LanInboxItem> onImportTask;
   final ValueChanged<LanInboxItem> onSaveText;
   final ValueChanged<LanInboxItem> onTextToTask;
   final ValueChanged<LanInboxItem> onDelete;
@@ -2912,6 +3035,7 @@ class _InboxPanel extends StatelessWidget {
                 item: item,
                 busy: busy,
                 onRestoreSnapshot: () => onRestoreSnapshot(item),
+                onImportTask: () => onImportTask(item),
                 onSaveText: () => onSaveText(item),
                 onTextToTask: () => onTextToTask(item),
                 onDelete: () => onDelete(item),
@@ -2927,6 +3051,7 @@ class _InboxRow extends StatelessWidget {
     required this.item,
     required this.busy,
     required this.onRestoreSnapshot,
+    required this.onImportTask,
     required this.onSaveText,
     required this.onTextToTask,
     required this.onDelete,
@@ -2935,6 +3060,7 @@ class _InboxRow extends StatelessWidget {
   final LanInboxItem item;
   final bool busy;
   final VoidCallback onRestoreSnapshot;
+  final VoidCallback onImportTask;
   final VoidCallback onSaveText;
   final VoidCallback onTextToTask;
   final VoidCallback onDelete;
@@ -2946,6 +3072,8 @@ class _InboxRow extends StatelessWidget {
         ? Icons.inventory_2_outlined
         : item.isText
         ? Icons.sticky_note_2_outlined
+        : item.isTask
+        ? Icons.task_alt_rounded
         : Icons.attach_file_rounded;
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpace.sm),
@@ -3067,6 +3195,23 @@ class _InboxRow extends StatelessWidget {
                   onPressed: busy ? null : () => _shareItem(context),
                   icon: const Icon(Icons.ios_share_rounded, size: 15),
                   label: const Text('Share'),
+                ),
+              ],
+            )
+          else if (item.isTask)
+            Wrap(
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy ? null : onImportTask,
+                  icon: const Icon(Icons.download_done_rounded, size: 15),
+                  label: const Text('Import task'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : () => _shareItem(context),
+                  icon: const Icon(Icons.ios_share_rounded, size: 15),
+                  label: const Text('Share bundle'),
                 ),
               ],
             )

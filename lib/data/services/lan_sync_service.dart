@@ -75,7 +75,7 @@ class LanHistoryEntry {
   /// `sent` or `received`.
   final String direction;
 
-  /// `snapshot`, `text`, or `file`.
+  /// `snapshot`, `text`, `file`, or `task`.
   final String kind;
   final String title;
   final String peerName;
@@ -222,7 +222,7 @@ class LanInboxItem {
 
   final String id;
 
-  /// `snapshot`, `text`, or `file`.
+  /// `snapshot`, `text`, `file`, or `task`.
   final String kind;
   final String title;
   final String fromName;
@@ -234,6 +234,7 @@ class LanInboxItem {
   bool get isSnapshot => kind == 'snapshot';
   bool get isText => kind == 'text';
   bool get isFile => kind == 'file';
+  bool get isTask => kind == 'task';
 
   String get sizeLabel {
     if (sizeBytes <= 0) return '';
@@ -562,6 +563,41 @@ class LanSyncService {
     );
   }
 
+  /// Sends a single task bundle. Unlike a ledger snapshot, the receiver can
+  /// import this straight into their ledger while both devices keep working.
+  Future<void> sendTask(
+    LanPeer peer,
+    String pin, {
+    required Uint8List bytes,
+    required String title,
+    required String fileName,
+  }) async {
+    if (bytes.length > maxPayloadBytes) {
+      throw LanException('That task bundle is larger than 100 MB.');
+    }
+    final cleanTitle = _cleanLabel(title, fallback: 'Shared task');
+    final safeName = _safeFileName(
+      fileName,
+      fallback: 'daymark-task.daymark-task',
+    );
+    await _post(
+      peer,
+      '/v1/task',
+      pin,
+      bytes,
+      contentType: 'application/zip',
+      extraQuery: {'name': safeName, 'title': cleanTitle},
+    );
+    await _recordHistory(
+      direction: 'sent',
+      kind: 'task',
+      title: cleanTitle,
+      peerName: peer.name,
+      sizeBytes: bytes.length,
+      status: 'sent',
+    );
+  }
+
   Future<void> markHistoryForItem(String itemId, String status) async {
     var changed = false;
     _history = [
@@ -638,7 +674,7 @@ class LanSyncService {
         'platform': Platform.operatingSystem,
         'port': port,
         'pinRequired': true,
-        'version': '1.2.0',
+        'version': '1.3.0',
       });
       return;
     }
@@ -747,6 +783,43 @@ class LanSyncService {
         id: const Uuid().v4(),
         kind: 'file',
         title: originalName,
+        fromName: from,
+        receivedAt: DateTime.now(),
+        filePath: file.path,
+        sizeBytes: bytes.length,
+      );
+      await _addInbox(item);
+      await _json(request.response, 201, {'ok': true, 'id': item.id});
+      return;
+    }
+
+    if (method == 'POST' && path == '/v1/task') {
+      final bytes = await _readBody(request);
+      final originalName = _safeFileName(
+        request.uri.queryParameters['name'],
+        fallback: 'daymark-task.daymark-task',
+      );
+      final from = _cleanLabel(
+        request.uri.queryParameters['from'],
+        fallback: 'Nearby device',
+      );
+      final title = _cleanLabel(
+        request.uri.queryParameters['title'],
+        fallback: 'Shared task',
+        maxLength: 160,
+      );
+      final tasks = Directory(p.join(directory.path, 'tasks'));
+      await tasks.create(recursive: true);
+      final stamp = _stamp(DateTime.now());
+      final safeName = originalName.endsWith('.daymark-task')
+          ? originalName
+          : '$originalName.daymark-task';
+      final file = File(p.join(tasks.path, '$stamp-$safeName'));
+      await file.writeAsBytes(bytes, flush: true);
+      final item = LanInboxItem(
+        id: const Uuid().v4(),
+        kind: 'task',
+        title: title,
         fromName: from,
         receivedAt: DateTime.now(),
         filePath: file.path,

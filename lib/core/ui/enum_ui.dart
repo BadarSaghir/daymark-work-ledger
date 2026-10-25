@@ -9,12 +9,18 @@ extension WorkKindUi on WorkKind {
     WorkKind.official => Icons.work_outline_rounded,
     WorkKind.adhoc => Icons.bolt_rounded,
     WorkKind.personal => Icons.wb_sunny_outlined,
+    WorkKind.learning => Icons.school_outlined,
+    WorkKind.admin => Icons.inventory_2_outlined,
+    WorkKind.creative => Icons.palette_outlined,
   };
 
   Color color(AppColors colors) => switch (this) {
     WorkKind.official => colors.primary,
     WorkKind.adhoc => colors.accent,
     WorkKind.personal => colors.gold,
+    WorkKind.learning => colors.blue,
+    WorkKind.admin => colors.inkMuted,
+    WorkKind.creative => colors.rose,
   };
 }
 

@@ -44,6 +44,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   Timer? _reminderDebounce;
+  Timer? _reminderPulse;
   ProviderSubscription<AsyncValue<List<TaskView>>>? _taskSubscription;
 
   @override
@@ -52,15 +53,21 @@ class _AppShellState extends ConsumerState<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _autoBackup();
       _syncReminders();
+      _pumpReminders();
     });
     _taskSubscription = ref.listenManual(tasksProvider, (previous, next) {
       if (next.hasValue) _queueReminderSync();
     });
+    _reminderPulse = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _pumpReminders(),
+    );
   }
 
   @override
   void dispose() {
     _reminderDebounce?.cancel();
+    _reminderPulse?.cancel();
     _taskSubscription?.close();
     super.dispose();
   }
@@ -79,6 +86,15 @@ class _AppShellState extends ConsumerState<AppShell> {
       final preferences = await ref.read(reminderControllerProvider.future);
       if (!preferences.enabled) return;
       await ref.read(reminderControllerProvider.notifier).syncNow();
+    } catch (_) {
+      // Reminder support is optional and must never break the workspace.
+    }
+  }
+
+  Future<void> _pumpReminders() async {
+    if (!ref.read(remindersEnabledProvider)) return;
+    try {
+      await ref.read(reminderControllerProvider.notifier).pumpDueReminders();
     } catch (_) {
       // Reminder support is optional and must never break the workspace.
     }

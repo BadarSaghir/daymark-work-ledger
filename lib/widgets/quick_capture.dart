@@ -62,7 +62,9 @@ class _QuickCaptureState extends ConsumerState<QuickCapture> {
   void initState() {
     super.initState();
     if (widget.initialTitle.isNotEmpty) _title.text = widget.initialTitle;
-    final categories = ref.read(categoriesProvider).value ?? const [];
+    final categories = (ref.read(categoriesProvider).value ?? const [])
+        .where((category) => !category.archived)
+        .toList();
     if (categories.isNotEmpty) _categoryId = categories.first.id;
   }
 

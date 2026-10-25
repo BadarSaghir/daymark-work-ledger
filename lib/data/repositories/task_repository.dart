@@ -113,6 +113,8 @@ class TaskRepository {
     DateTime? scheduledStart,
     DateTime? scheduledEnd,
     DateTime? dueAt,
+    DateTime? reminderAt,
+    String? reminderNote,
     String notesMd = '',
     List<String> stepTitles = const [],
   }) async {
@@ -137,6 +139,8 @@ class TaskRepository {
       archived: false,
       createdAt: now,
       updatedAt: now,
+      reminderAt: reminderAt,
+      reminderNote: reminderNote,
     );
     await _db.transaction((txn) async {
       await txn.insert('tasks', task.toMap());

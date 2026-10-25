@@ -21,6 +21,9 @@ double workKindMultiplier(WorkKind kind) {
     WorkKind.official => 1.0,
     WorkKind.adhoc => 0.75,
     WorkKind.personal => 0.5,
+    WorkKind.learning => 0.9,
+    WorkKind.admin => 0.6,
+    WorkKind.creative => 0.85,
   };
 }
 

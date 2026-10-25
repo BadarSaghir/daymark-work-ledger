@@ -5,6 +5,7 @@ import '../../app/nav.dart';
 import '../../app/routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/ui/enum_ui.dart';
 import '../../core/ui/layout.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
@@ -32,7 +33,10 @@ class CalendarPage extends ConsumerWidget {
     final focusByDay = focusAsync.value ?? const <String, int>{};
     final dayTasks = views.forDate(selected).toList();
     final dayFocus = ref.watch(dayFocusProvider(selected)).value ?? 0;
+    final dayBlocks = _scheduledBlocksForDay(selected, views);
+    final dayOccupied = _occupiedMinutes(dayBlocks);
     final monthTotal = focusByDay.values.fold<int>(0, (a, b) => a + b);
+    final monthOccupied = _scheduledMinutesForMonth(views, month);
     final activeDays = focusByDay.values.where((ms) => ms > 0).length;
 
     final header = PageHeader(
@@ -122,6 +126,14 @@ class CalendarPage extends ConsumerWidget {
                   Container(width: 1, height: 34, color: colors(context).line),
                   Expanded(
                     child: _MiniStat(
+                      label: 'Booked',
+                      value: formatCompact(Duration(minutes: dayOccupied)),
+                      color: colors(context).green,
+                    ),
+                  ),
+                  Container(width: 1, height: 34, color: colors(context).line),
+                  Expanded(
+                    child: _MiniStat(
                       label: 'Tasks',
                       value: '${dayTasks.where((v) => !v.isDone).length} open',
                       color: colors(context).primary,
@@ -168,6 +180,10 @@ class CalendarPage extends ConsumerWidget {
             ],
           ),
         ),
+        if (dayBlocks.isNotEmpty) ...[
+          const SizedBox(height: AppSpace.lg),
+          _DayHoursCard(blocks: dayBlocks, occupiedMinutes: dayOccupied),
+        ],
         const SizedBox(height: AppSpace.lg),
         SurfaceCard(
           child: Column(
@@ -181,6 +197,10 @@ class CalendarPage extends ConsumerWidget {
               _MonthStatRow(
                 label: 'Focus time',
                 value: formatCompactMs(monthTotal),
+              ),
+              _MonthStatRow(
+                label: 'Scheduled hours',
+                value: formatCompact(Duration(minutes: monthOccupied)),
               ),
               _MonthStatRow(label: 'Active days', value: '$activeDays'),
               _MonthStatRow(
@@ -402,11 +422,12 @@ class _DayTile extends StatelessWidget {
     final dayTasks = views.forDate(day).toList();
     final open = dayTasks.where((view) => !view.isDone).length;
     final done = dayTasks.where((view) => view.isDone).length;
+    final booked = _occupiedMinutes(_scheduledBlocksForDay(day, views));
     final intensity = focusMs == 0
         ? 0.0
         : (focusMs / maxFocus).clamp(0.08, 1.0);
     return SizedBox(
-      height: 84,
+      height: 96,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.badge),
@@ -490,6 +511,17 @@ class _DayTile extends StatelessWidget {
                   ),
                 ),
               ],
+              if (booked > 0)
+                Text(
+                  '${formatCompact(Duration(minutes: booked))} busy',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.monoData.copyWith(
+                    color: colors.primary,
+                    fontSize: 8.2,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
             ],
           ),
         ),
@@ -591,6 +623,18 @@ class _WeekAgenda extends StatelessWidget {
                               fontSize: 8.5,
                             ),
                           ),
+                          if (_occupiedMinutes(
+                                _scheduledBlocksForDay(days[index], views),
+                              ) >
+                              0)
+                            Text(
+                              '${formatCompact(Duration(minutes: _occupiedMinutes(_scheduledBlocksForDay(days[index], views))))} busy',
+                              style: AppText.monoData.copyWith(
+                                color: colors.primary,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -700,6 +744,194 @@ class _MonthStatRow extends StatelessWidget {
             value,
             style: AppText.monoData.copyWith(color: colors.ink, fontSize: 11.5),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduledBlock {
+  const _ScheduledBlock({
+    required this.view,
+    required this.start,
+    required this.end,
+  });
+
+  final TaskView view;
+  final DateTime start;
+  final DateTime end;
+
+  int get minutes => end.difference(start).inMinutes;
+}
+
+List<_ScheduledBlock> _scheduledBlocksForDay(
+  DateTime day,
+  Iterable<TaskView> views,
+) {
+  final dayStart = DateTime(day.year, day.month, day.day);
+  final dayEnd = addDays(dayStart, 1);
+  final blocks = <_ScheduledBlock>[];
+  for (final view in views) {
+    final rawStart = view.task.scheduledStart;
+    if (rawStart == null) continue;
+    var end = view.task.scheduledEnd;
+    if (end == null || !end.isAfter(rawStart)) {
+      final estimate = view.task.estimateMinutes;
+      end = rawStart.add(
+        Duration(minutes: estimate == null || estimate <= 0 ? 30 : estimate),
+      );
+    }
+    if (end.isBefore(rawStart) || end.isAtSameMomentAs(rawStart)) {
+      end = rawStart.add(const Duration(minutes: 15));
+    }
+    if (!end.isAfter(dayStart) || !rawStart.isBefore(dayEnd)) continue;
+    final start = rawStart.isBefore(dayStart) ? dayStart : rawStart;
+    final clippedEnd = end.isAfter(dayEnd) ? dayEnd : end;
+    if (!clippedEnd.isAfter(start)) continue;
+    blocks.add(_ScheduledBlock(view: view, start: start, end: clippedEnd));
+  }
+  blocks.sort((a, b) => a.start.compareTo(b.start));
+  return blocks;
+}
+
+int _occupiedMinutes(Iterable<_ScheduledBlock> blocks) {
+  DateTime? mergedStart;
+  DateTime? mergedEnd;
+  var total = 0;
+  for (final block in blocks) {
+    if (mergedStart == null || mergedEnd == null) {
+      mergedStart = block.start;
+      mergedEnd = block.end;
+      continue;
+    }
+    if (block.start.isAfter(mergedEnd)) {
+      total += mergedEnd.difference(mergedStart).inMinutes;
+      mergedStart = block.start;
+      mergedEnd = block.end;
+    } else if (block.end.isAfter(mergedEnd)) {
+      mergedEnd = block.end;
+    }
+  }
+  if (mergedStart != null && mergedEnd != null) {
+    total += mergedEnd.difference(mergedStart).inMinutes;
+  }
+  return total;
+}
+
+int _scheduledMinutesForMonth(List<TaskView> views, DateTime month) {
+  final days = <String, DateTime>{};
+  for (final view in views) {
+    final start = view.task.scheduledStart;
+    if (start == null ||
+        start.year != month.year ||
+        start.month != month.month) {
+      continue;
+    }
+    final day = DateTime(start.year, start.month, start.day);
+    days[dateKey(day)] = day;
+  }
+  var total = 0;
+  for (final day in days.values) {
+    total += _occupiedMinutes(_scheduledBlocksForDay(day, views));
+  }
+  return total;
+}
+
+class _DayHoursCard extends StatelessWidget {
+  const _DayHoursCard({required this.blocks, required this.occupiedMinutes});
+
+  final List<_ScheduledBlock> blocks;
+  final int occupiedMinutes;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.schedule_rounded, size: 15, color: colors.primary),
+              const SizedBox(width: 6),
+              Text(
+                'OCCUPIED HOURS',
+                style: AppText.label.copyWith(color: colors.inkFaint),
+              ),
+              const Spacer(),
+              Text(
+                formatCompact(Duration(minutes: occupiedMinutes)),
+                style: AppText.monoData.copyWith(
+                  color: colors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Scheduled windows on this day. Overlapping work is counted once.',
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkFaint,
+              fontSize: 10.3,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          for (final block in blocks) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    '${timeLabel(block.start)}–${timeLabel(block.end)}',
+                    style: AppText.monoData.copyWith(
+                      color: colors.inkMuted,
+                      fontSize: 9.5,
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 3,
+                  height: 28,
+                  margin: const EdgeInsets.only(right: 8, top: 1),
+                  decoration: BoxDecoration(
+                    color: block.view.category?.colorValue ?? colors.primary,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        block.view.task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.bodySmall.copyWith(
+                          color: colors.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        [
+                          block.view.category?.name ?? 'Unfiled',
+                          formatCompact(Duration(minutes: block.minutes)),
+                        ].join(' · '),
+                        style: AppText.bodySmall.copyWith(
+                          color: colors.inkFaint,
+                          fontSize: 9.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.sm),
+          ],
         ],
       ),
     );

@@ -8,6 +8,19 @@ semantic versioning once it reaches a public release.
 
 ### Added
 
+- Multiple local accounts with separate SQLite ledgers, backups, reminders,
+  Nearby history, and Google Drive links. Accounts are remembered, switchable
+  from Settings, the sidebar, the More sheet, and the command palette, and
+  protected by a sign-out account picker without deleting data.
+- Per-local-account Google Drive configuration. Signed-out Google accounts stay
+  remembered for one-tap reconnection, with explicit **Sign out** and **Forget
+  account** actions.
+- Searchable, paginated category management and a shared category picker used by
+  quick capture and the task editor, so large category sets stay usable.
+- Labelled icon menus across category, task, stopwatch, backup, Nearby, and
+  Google account actions.
+- Bundle-aware Linux window and menu icon loading, plus a Windows taskbar
+  AppUserModelID for consistent Daymark grouping and branding.
 - One-tap Google Drive sign-in for official builds with build-time OAuth
   credentials. Builds without credentials retain the guided self-hosted setup.
 - Build-time OAuth injection through `GOOGLE_OAUTH_CLIENT_ID` and
@@ -29,6 +42,14 @@ semantic versioning once it reaches a public release.
 
 ### Changed
 
+- Google Drive credentials, tokens, auto-upload settings, and Google account
+  choices are now scoped to the active local account.
+- The first local account adopts the existing data directory in place, so
+  upgrades preserve the current ledger without a migration copy.
+- Android CI installs the API 37 platform and build tools explicitly before the
+  APK/AAB build.
+- macOS packaging now stages with `ditto`, signs and verifies the app, creates
+  an HFS+ compressed DMG, and verifies the image.
 - Upgraded to Riverpod 3.4.3, with legacy `StateProvider` imports isolated to the
   controllers that still use them.
 - Replaced `flutter_markdown` with `flutter_markdown_plus`.

@@ -64,14 +64,22 @@ class BackupInfo {
 /// Portable, validated, human-inspectable backups: a ZIP with `backup.json`,
 /// a manifest, and markdown mirrors of journals and task notes.
 class BackupService {
-  BackupService(this._appDb, {required this.backupDirectory});
+  BackupService(
+    this._appDb, {
+    required this.backupDirectory,
+    this.attachmentDirectory,
+  });
 
   final AppDatabase _appDb;
   final Directory backupDirectory;
 
+  /// Optional attachment root for the active profile. Backups restore the
+  /// file tree alongside `task_attachments` metadata.
+  final Directory? attachmentDirectory;
+
   static const format = 'daymark.backup';
   static const formatVersion = 1;
-  static const appVersion = '1.2.0';
+  static const appVersion = '1.3.0';
   static const maxImportBytes = 100 * 1024 * 1024;
 
   static const _tables = <String>[
@@ -79,6 +87,7 @@ class BackupService {
     'tasks',
     'subtasks',
     'time_entries',
+    'task_attachments',
     'journal_entries',
     'activity_events',
     'settings',
@@ -116,6 +125,8 @@ class BackupService {
       'archived',
       'created_at',
       'updated_at',
+      'reminder_at',
+      'reminder_note',
     },
     'subtasks': {
       'id',
@@ -136,6 +147,15 @@ class BackupService {
       'started_at',
       'ended_at',
       'duration_ms',
+      'created_at',
+    },
+    'task_attachments': {
+      'id',
+      'task_id',
+      'file_name',
+      'mime_type',
+      'size_bytes',
+      'relative_path',
       'created_at',
     },
     'journal_entries': {
@@ -219,6 +239,7 @@ class BackupService {
           'manifest.json',
           'markdown/journal/*.md',
           'markdown/tasks/*.md',
+          'attachments/*',
         ],
       }),
       'README.md': _backupReadme(now),
@@ -230,11 +251,40 @@ class BackupService {
       final bytes = utf8.encode(entry.value);
       archive.addFile(ArchiveFile(entry.key, bytes.length, bytes));
     }
+    final attachmentFiles = await _attachmentArchiveFiles();
+    for (final entry in attachmentFiles.entries) {
+      archive.addFile(ArchiveFile(entry.key, entry.value.length, entry.value));
+    }
     final encoded = ZipEncoder().encode(archive);
     if (encoded.isEmpty) {
       throw BackupException('Could not encode the backup archive.');
     }
     return Uint8List.fromList(encoded);
+  }
+
+  Future<Map<String, Uint8List>> _attachmentArchiveFiles() async {
+    final root = attachmentDirectory;
+    if (root == null) return const {};
+    final rows = await _db.query('task_attachments');
+    final files = <String, Uint8List>{};
+    var total = 0;
+    for (final row in rows) {
+      final relative = row['relative_path'] as String? ?? '';
+      final safe = _safeRelativePath(relative);
+      if (safe == null) continue;
+      final file = File(p.join(root.path, safe));
+      if (!await file.exists()) continue;
+      final length = await file.length();
+      total += length;
+      if (total > maxImportBytes) {
+        throw BackupException(
+          'Attachments make this backup larger than 100 MB. Remove a large '
+          'file from a task and try again.',
+        );
+      }
+      files[_attachmentArchivePath(safe)] = await file.readAsBytes();
+    }
+    return files;
   }
 
   Future<Map<String, int>> _tableCounts() async {
@@ -321,6 +371,7 @@ class BackupService {
       throw BackupException('That backup is larger than 100 MB.');
     }
     final String jsonText;
+    final attachmentFiles = <String, Uint8List>{};
     if (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
       final Archive archive;
       try {
@@ -330,9 +381,16 @@ class BackupService {
       }
       ArchiveFile? entry;
       for (final file in archive.files) {
-        if (file.name == 'backup.json') {
+        if (!file.isFile) continue;
+        final name = file.name.replaceAll('\\', '/');
+        if (name == 'backup.json') {
           entry = file;
-          break;
+          continue;
+        }
+        if (!name.startsWith('attachments/')) continue;
+        final content = file.readBytes();
+        if (content != null) {
+          attachmentFiles[name] = Uint8List.fromList(content);
         }
       }
       if (entry == null) {
@@ -396,7 +454,7 @@ class BackupService {
       warning = 'Restored. A pre-restore safety copy could not be written (storage may be full).';
     }
 
-    await _restore(data);
+    await _restore(data, attachmentFiles);
     return BackupResult(
       file: null,
       counts: {for (final table in _tables) table: data[table]!.length},
@@ -405,7 +463,10 @@ class BackupService {
     );
   }
 
-  Future<void> _restore(Map<String, List<Map<String, Object?>>> data) async {
+  Future<void> _restore(
+    Map<String, List<Map<String, Object?>>> data,
+    Map<String, Uint8List> attachmentFiles,
+  ) async {
     final categoryIds = <String>{
       for (final row in data['categories']!) row['id'] as String? ?? '',
     }..remove('');
@@ -413,8 +474,21 @@ class BackupService {
       for (final row in data['tasks']!) row['id'] as String? ?? '',
     }..remove('');
 
+    final attachmentRoot = attachmentDirectory;
+    if (attachmentRoot != null) {
+      await attachmentRoot.create(recursive: true);
+      await for (final entity in attachmentRoot.list()) {
+        try {
+          await entity.delete(recursive: true);
+        } catch (_) {
+          // A locked file should not prevent the database restore.
+        }
+      }
+    }
+
     await _db.transaction((txn) async {
       for (final table in const [
+        'task_attachments',
         'time_entries',
         'subtasks',
         'tasks',
@@ -480,6 +554,29 @@ class BackupService {
           clean,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
+      }
+      if (attachmentRoot != null) {
+        for (final row in data['task_attachments']!) {
+          final clean = _cleanRow('task_attachments', row);
+          final task = clean['task_id'] as String?;
+          if (task == null || !taskIds.contains(task)) continue;
+          final relative = _safeRelativePath(
+            clean['relative_path'] as String? ?? '',
+          );
+          if (relative == null) continue;
+          final archived = attachmentFiles[_attachmentArchivePath(relative)];
+          if (archived == null) continue;
+          final target = File(p.join(attachmentRoot.path, relative));
+          await target.parent.create(recursive: true);
+          await target.writeAsBytes(archived, flush: true);
+          clean['relative_path'] = relative;
+          clean['size_bytes'] = archived.length;
+          await txn.insert(
+            'task_attachments',
+            clean,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
       }
       for (final row in data['journal_entries']!) {
         await txn.insert(
@@ -629,6 +726,21 @@ class BackupService {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${local.year}${two(local.month)}${two(local.day)}'
         '-${two(local.hour)}${two(local.minute)}${two(local.second)}';
+  }
+
+  static String? _safeRelativePath(String raw) {
+    final normalized = raw.trim().replaceAll('\\', '/');
+    if (normalized.isEmpty || normalized.startsWith('/')) return null;
+    final parts = normalized.split('/');
+    if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
+      return null;
+    }
+    return p.joinAll(parts);
+  }
+
+  static String _attachmentArchivePath(String relative) {
+    final parts = relative.replaceAll('\\', '/').split('/');
+    return p.posix.joinAll(['attachments', ...parts]);
   }
 
   static String _slug(String input) {

@@ -1,7 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
@@ -19,6 +25,7 @@ import '../../core/utils/durations.dart';
 import '../../data/models/activity_event.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/subtask.dart';
+import '../../data/models/task_attachment.dart';
 import '../../data/models/task_view.dart';
 import '../../data/models/time_entry.dart';
 import '../../state/repository_providers.dart';
@@ -47,6 +54,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   DateTime? _notesSavedAt;
   List<TimeEntry> _entries = const [];
   List<ActivityEvent> _activity = const [];
+  List<TaskAttachment> _attachments = const [];
   bool _historyLoading = true;
 
   @override
@@ -71,12 +79,140 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     final repo = ref.read(taskRepositoryProvider);
     final entries = await repo.entriesForTask(widget.taskId);
     final activity = await repo.activityFor(widget.taskId);
+    final attachments = await ref
+        .read(taskAttachmentRepositoryProvider)
+        .listForTask(widget.taskId);
     if (!mounted) return;
     setState(() {
       _entries = entries;
       _activity = activity;
+      _attachments = attachments;
       _historyLoading = false;
     });
+  }
+
+  Future<void> _addAttachments() async {
+    List<XFile> picked;
+    try {
+      picked = await openFiles();
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not open the file picker: $error');
+      return;
+    }
+    if (picked.isEmpty) return;
+    try {
+      final service = await ref.read(taskAttachmentServiceProvider.future);
+      for (final file in picked) {
+        await service.addFile(widget.taskId, File(file.path));
+      }
+      await _loadHistory();
+      if (mounted) {
+        showToast(
+          context,
+          picked.length == 1
+              ? 'File attached.'
+              : '${picked.length} files attached.',
+        );
+      }
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not attach that file: $error');
+    }
+  }
+
+  Future<void> _openAttachment(TaskAttachment attachment) async {
+    try {
+      final service = await ref.read(taskAttachmentServiceProvider.future);
+      final file = service.fileFor(attachment);
+      if (!await file.exists()) {
+        if (mounted) showToast(context, 'That file is missing from disk.');
+        return;
+      }
+      final opened = await launchUrl(
+        Uri.file(file.path),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        showToast(context, 'No app is registered to open this file type.');
+      }
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not open the file: $error');
+    }
+  }
+
+  Future<void> _shareAttachment(TaskAttachment attachment) async {
+    try {
+      final service = await ref.read(taskAttachmentServiceProvider.future);
+      final file = service.fileFor(attachment);
+      if (!await file.exists()) {
+        if (mounted) showToast(context, 'That file is missing from disk.');
+        return;
+      }
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          subject: attachment.fileName,
+          sharePositionOrigin: box == null
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not share the file: $error');
+    }
+  }
+
+  Future<void> _deleteAttachment(TaskAttachment attachment) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Remove this attachment?',
+      message: '“${attachment.fileName}” will be deleted from this device.',
+      confirmLabel: 'Remove',
+      danger: true,
+      icon: Icons.delete_outline_rounded,
+    );
+    if (!confirmed) return;
+    try {
+      final service = await ref.read(taskAttachmentServiceProvider.future);
+      await service.delete(attachment);
+      await _loadHistory();
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not remove the file: $error');
+    }
+  }
+
+  Future<void> _shareTask(TaskView view) async {
+    try {
+      final service = await ref.read(taskBundleServiceProvider.future);
+      final export = await service.exportTask(widget.taskId);
+      final temp = await getTemporaryDirectory();
+      final file = File(p.join(temp.path, export.fileName));
+      await file.writeAsBytes(export.bytes, flush: true);
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/zip')],
+          subject: 'Daymark task · ${export.title}',
+          text:
+              'Daymark task bundle with notes, steps, tracked time, and '
+              '${export.attachmentCount} file(s). Import it from Nearby → '
+              'Received here.',
+          sharePositionOrigin: box == null
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+      if (mounted) {
+        showToast(
+          context,
+          'Task bundle ready. Open it on the other device from Nearby.',
+        );
+      }
+    } catch (error) {
+      if (mounted) showToast(context, 'Could not share the task: $error');
+    }
   }
 
   void _hydrate(TaskView view) {
@@ -169,6 +305,13 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       focusNode: _stepFocus,
       onAdd: _addStep,
     );
+    final attachments = _AttachmentsCard(
+      attachments: _attachments,
+      onAdd: _addAttachments,
+      onOpen: _openAttachment,
+      onShare: _shareAttachment,
+      onDelete: _deleteAttachment,
+    );
     final history = _HistoryCard(
       view: view,
       entries: _entries,
@@ -198,6 +341,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
               onTimer: () => _toggleTimer(view),
               timerActive: active,
               timerRunning: active && (timer?.isRunning ?? false),
+              onShare: () => _shareTask(view),
               onArchive: () => _archive(view),
               onDelete: () => _delete(view),
             ),
@@ -226,6 +370,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
                                   const SizedBox(height: AppSpace.lg),
                                   steps,
                                   const SizedBox(height: AppSpace.lg),
+                                  attachments,
+                                  const SizedBox(height: AppSpace.lg),
                                   history,
                                 ],
                               ),
@@ -238,6 +384,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
                         notes,
                         const SizedBox(height: AppSpace.lg),
                         steps,
+                        const SizedBox(height: AppSpace.lg),
+                        attachments,
                         const SizedBox(height: AppSpace.lg),
                         rail,
                         const SizedBox(height: AppSpace.lg),
@@ -354,6 +502,7 @@ class _DetailTopBar extends StatelessWidget {
     required this.onTimer,
     required this.timerActive,
     required this.timerRunning,
+    required this.onShare,
     required this.onArchive,
     required this.onDelete,
   });
@@ -364,6 +513,7 @@ class _DetailTopBar extends StatelessWidget {
   final VoidCallback onTimer;
   final bool timerActive;
   final bool timerRunning;
+  final VoidCallback onShare;
   final VoidCallback onArchive;
   final VoidCallback onDelete;
 
@@ -411,10 +561,18 @@ class _DetailTopBar extends StatelessWidget {
           PopupMenuButton<String>(
             tooltip: 'More',
             onSelected: (value) {
+              if (value == 'share') onShare();
               if (value == 'archive') onArchive();
               if (value == 'delete') onDelete();
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'share',
+                child: MenuAction(
+                  icon: Icons.ios_share_rounded,
+                  label: 'Share task bundle',
+                ),
+              ),
               PopupMenuItem(
                 value: 'archive',
                 child: MenuAction(
@@ -1003,6 +1161,15 @@ class _DetailRail extends ConsumerWidget {
                       '${dateLabel(view.task.dueAt!)} · ${timeLabel(view.task.dueAt!)}',
                   color: view.isOverdue ? colors.rose : null,
                 ),
+              if (view.task.reminderAt != null)
+                _DetailRow(
+                  icon: Icons.notifications_active_outlined,
+                  label: 'Reminder',
+                  value:
+                      '${dateLabel(view.task.reminderAt!)} · '
+                      '${timeLabel(view.task.reminderAt!)}',
+                  color: colors.accent,
+                ),
             ],
           ),
         ),
@@ -1067,6 +1234,9 @@ class _DetailRail extends ConsumerWidget {
     WorkKind.official => 1.0,
     WorkKind.adhoc => 0.75,
     WorkKind.personal => 0.5,
+    WorkKind.learning => 0.9,
+    WorkKind.admin => 0.6,
+    WorkKind.creative => 0.85,
   };
 }
 
@@ -1151,6 +1321,153 @@ class _WeightRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _AttachmentsCard extends StatelessWidget {
+  const _AttachmentsCard({
+    required this.attachments,
+    required this.onAdd,
+    required this.onOpen,
+    required this.onShare,
+    required this.onDelete,
+  });
+
+  final List<TaskAttachment> attachments;
+  final Future<void> Function() onAdd;
+  final Future<void> Function(TaskAttachment) onOpen;
+  final Future<void> Function(TaskAttachment) onShare;
+  final Future<void> Function(TaskAttachment) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.attach_file_rounded, size: 16, color: colors.primary),
+              const SizedBox(width: 7),
+              Text(
+                'FILES & REFERENCES',
+                style: AppText.label.copyWith(color: colors.inkFaint),
+              ),
+              if (attachments.isNotEmpty) ...[
+                const SizedBox(width: 7),
+                Text(
+                  '${attachments.length}',
+                  style: AppText.monoData.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => onAdd(),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Add files'),
+              ),
+            ],
+          ),
+          if (attachments.isEmpty) ...[
+            const SizedBox(height: AppSpace.sm),
+            Text(
+              'Attach briefs, screenshots, references, or working files. They '
+              'travel with this task when you share it or create a backup.',
+              style: AppText.bodySmall.copyWith(
+                color: colors.inkFaint,
+                fontSize: 11.5,
+              ),
+            ),
+          ] else
+            for (final attachment in attachments) ...[
+              Divider(color: colors.line, height: AppSpace.lg),
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: colors.surfaceSunken,
+                      borderRadius: BorderRadius.circular(AppRadius.input),
+                      border: Border.all(color: colors.line),
+                    ),
+                    child: Icon(
+                      _attachmentIcon(attachment.mimeType),
+                      size: 15,
+                      color: colors.inkMuted,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          attachment.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.bodySmall.copyWith(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          attachment.sizeLabel,
+                          style: AppText.monoData.copyWith(
+                            color: colors.inkFaint,
+                            fontSize: 9.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Open',
+                    onPressed: () => onOpen(attachment),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 17),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'File actions',
+                    onSelected: (value) {
+                      if (value == 'share') onShare(attachment);
+                      if (value == 'delete') onDelete(attachment);
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'share',
+                        child: MenuAction(
+                          icon: Icons.ios_share_rounded,
+                          label: 'Share file',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: MenuAction(
+                          icon: Icons.delete_outline_rounded,
+                          label: 'Remove',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+        ],
+      ),
+    );
+  }
+
+  static IconData _attachmentIcon(String mime) {
+    if (mime.startsWith('image/')) return Icons.image_outlined;
+    if (mime.startsWith('video/')) return Icons.movie_outlined;
+    if (mime.startsWith('audio/')) return Icons.audio_file_outlined;
+    if (mime == 'application/pdf') return Icons.picture_as_pdf_outlined;
+    if (mime.startsWith('text/')) return Icons.description_outlined;
+    return Icons.insert_drive_file_outlined;
   }
 }
 

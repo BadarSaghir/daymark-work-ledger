@@ -61,6 +61,15 @@ class ReminderController extends AsyncNotifier<ReminderPreferences> {
     return service.sync(tasks, preferences);
   }
 
+  /// Linux fallback pulse. It is a no-op on platforms with native scheduling.
+  Future<int> pumpDueReminders() async {
+    final preferences = state.value;
+    if (preferences == null || !preferences.enabled) return 0;
+    final service = await _service();
+    final tasks = await ref.read(tasksProvider.future);
+    return service.checkDueReminders(tasks, preferences);
+  }
+
   Future<int> pendingCount() async {
     final service = await _service();
     return service.pendingCount();

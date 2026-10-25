@@ -49,6 +49,11 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+# permission_handler_windows still uses <experimental/coroutine>. Modern MSVC
+# toolchains fail that header with STL1011 unless this compatibility switch is
+# defined. Keep it directory-wide so plugin targets inherit it as well.
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 

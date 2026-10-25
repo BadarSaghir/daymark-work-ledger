@@ -23,6 +23,8 @@ class Task {
     required this.archived,
     required this.createdAt,
     required this.updatedAt,
+    this.reminderAt,
+    this.reminderNote,
   });
 
   static const Object _unset = Object();
@@ -51,6 +53,10 @@ class Task {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// A custom, per-task reminder. Independent of the global lead time.
+  final DateTime? reminderAt;
+  final String? reminderNote;
+
   bool get isDone => status == TaskStatus.done;
   bool get isScheduled => plannedDate != null;
 
@@ -75,6 +81,8 @@ class Task {
     Object? completedAt = _unset,
     bool? archived,
     DateTime? updatedAt,
+    Object? reminderAt = _unset,
+    Object? reminderNote = _unset,
   }) {
     return Task(
       id: id,
@@ -110,6 +118,12 @@ class Task {
       archived: archived ?? this.archived,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      reminderAt: identical(reminderAt, _unset)
+          ? this.reminderAt
+          : reminderAt as DateTime?,
+      reminderNote: identical(reminderNote, _unset)
+          ? this.reminderNote
+          : reminderNote as String?,
     );
   }
 
@@ -134,6 +148,8 @@ class Task {
       archived: boolFromDb(map['archived']),
       createdAt: dateFromMs(map['created_at']) ?? DateTime.now(),
       updatedAt: dateFromMs(map['updated_at']) ?? DateTime.now(),
+      reminderAt: dateFromMs(map['reminder_at']),
+      reminderNote: map['reminder_note'] as String?,
     );
   }
 
@@ -158,6 +174,8 @@ class Task {
       'archived': archived ? 1 : 0,
       'created_at': msFromDate(createdAt),
       'updated_at': msFromDate(updatedAt),
+      'reminder_at': msFromDate(reminderAt),
+      'reminder_note': reminderNote,
     };
   }
 }

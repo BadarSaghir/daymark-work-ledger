@@ -135,7 +135,10 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: dart run tool/configure_google_oauth.dart
-      - run: flutter build windows --release
+      - name: Build Windows release
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: flutter build windows --release
       - name: Package portable build
         shell: pwsh
         run: |
@@ -162,15 +165,23 @@ jobs:
     needs: quality
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Ensure Android API 37 toolchain
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT" -type f -name sdkmanager 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager was not found in $SDK_ROOT" >&2
+            find /usr/local/lib/android/sdk -maxdepth 3 -type f -name sdkmanager >&2 || true
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-37.0" "build-tools;37.0.0"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}

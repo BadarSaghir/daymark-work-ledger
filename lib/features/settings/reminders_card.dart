@@ -165,8 +165,8 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Scheduled on this device by the operating system. No '
-                      'push service, no network, no account.',
+                      'Scheduled on this device. Start, deadline, and custom '
+                      'task reminders arrive without a network or account.',
                       style: AppText.bodySmall.copyWith(
                         color: colors.inkFaint,
                         fontSize: 10.8,
@@ -267,8 +267,9 @@ class _DisabledPrompt extends StatelessWidget {
         ),
         const SizedBox(height: AppSpace.md),
         Text(
-          'Task starts, deadlines, and a daily closing note are all computed '
-          'from your ledger and handed to your device. Nothing leaves it.',
+          'Task starts, deadlines, custom reminders, and a daily closing note '
+          'are all computed from your ledger. Nothing leaves the device. On '
+          'Linux, keep Daymark open so it can ring reminders itself.',
           style: AppText.bodySmall.copyWith(
             color: colors.inkMuted,
             fontSize: 10.8,
@@ -423,14 +424,15 @@ class _EnabledSettings extends StatelessWidget {
           value: prefs.taskReminders,
           onChanged: busy ? null : onTaskReminders,
           title: Text(
-            'Task starts & deadlines',
+            'Task starts, deadlines & custom reminders',
             style: AppText.bodySmall.copyWith(
               color: colors.ink,
               fontWeight: FontWeight.w700,
             ),
           ),
           subtitle: Text(
-            'Only tasks with a scheduled start or a due time.',
+            'Custom reminders use the exact date and time set in the task '
+            'editor. Start and deadline nudges use the lead time below.',
             style: AppText.bodySmall.copyWith(
               color: colors.inkFaint,
               fontSize: 10.5,
@@ -527,8 +529,9 @@ class _EnabledSettings extends StatelessWidget {
         const SizedBox(height: AppSpace.sm),
         Text(
           'Timing is handled by the OS and may be adjusted by battery saver. '
-          'Daymark never uses exact alarms. Reminders refresh whenever the '
-          'ledger changes and when the app opens.',
+          'Daymark never uses exact alarms. Linux has no offline scheduler in '
+          'the notification plugin, so Daymark checks every few seconds while '
+          'open. Reminders refresh whenever the ledger changes and on launch.',
           style: AppText.bodySmall.copyWith(
             color: colors.inkFaint,
             fontSize: 9.8,

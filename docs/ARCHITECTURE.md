@@ -93,6 +93,18 @@ test/
 | macOS | `sqflite_common_ffi` | Desktop |
 | Web | **not supported** | Offline requirement + SQLite semantics; excluded from project |
 
+### 3.1 Local accounts
+
+`local_accounts.json` at the application-support root remembers profiles,
+the active id, and whether the workspace is signed in. The first profile adopts
+the original root layout in place (`data/`, `backups/`, `cloud/`, `nearby/`,
+`config/`). Every additional profile gets `accounts/<uuid>/` with the same
+internal layout. Switching opens the next SQLite database before closing the
+previous one, then lets Riverpod rebuild repositories from the new
+`databaseProvider`. Google credentials and auto-upload settings are therefore
+per local account, and signing out only flips the picker gate; it never deletes
+an account or its data.
+
 ---
 
 ## 4. Data model (schema v1)
@@ -412,7 +424,7 @@ Makefile targets mirror these. Seed/demo data is available from Settings and emp
 
 ## 13. Security & privacy
 
-- The ledger, backups, and journal never require an account or telemetry.
+- The ledger, backups, and journal never require an online account or telemetry. Local accounts separate data and cloud links but are profiles, not a password boundary; the sign-out gate is a convenience on shared devices.
 - Google OAuth client values, refresh tokens, and notification preferences live in separate local files, never in ledger backups. Token files are written with owner-only permissions on Unix.
 - Nearby is opt-in per session, binds only to private/loopback/link-local addresses, and is guarded by a rotating six-digit code. **LAN payloads are not encrypted.**
 - The pairing QR contains the session code. The UI tells the user to show it only to their own device.
@@ -430,6 +442,6 @@ Makefile targets mirror these. Seed/demo data is available from Settings and emp
 - **Transport:** a short-lived `HttpServer` on a random port. Private, loopback, and link-local targets only. No TLS.
 - **Pairing:** six random digits generated with `Random.secure()` on each Nearby session. A QR or paste link encodes `daymark://pair?host=…&port=…&pin=…&name=…&id=…`. Pairing remembers the code in memory until the page goes offline; it is not persisted.
 - **Endpoints:** `GET /v1/info`, `GET /v1/snapshot`, `POST /v1/snapshot`, `POST /v1/text`, and `POST /v1/file`, all PIN-guarded and capped at 100 MB.
-- **Inbox:** received notes, files, and snapshots are written under `getApplicationSupportDirectory()/nearby/`. A snapshot is never applied automatically; restore validates the archive and writes a pre-restore safety copy first.
+- **Inbox:** received notes, files, and snapshots are written under the active local account's `nearby/` folder. A snapshot is never applied automatically; restore validates the archive and writes a pre-restore safety copy first.
 - **History:** `history.json` keeps the newest 500 events with direction, kind, title, peer, timestamp, status, item id, and size. Statuses move from `received` to `restored`, `journaled`, or `removed`.
 - **Sync now:** sends the local snapshot, then pulls the peer snapshot in one user action. Each side sees the other side's backup in its inbox.

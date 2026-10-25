@@ -4,7 +4,10 @@ library;
 enum WorkKind {
   official('official', 'Official'),
   adhoc('adhoc', 'Ad-hoc'),
-  personal('personal', 'Personal');
+  personal('personal', 'Personal'),
+  learning('learning', 'Learning'),
+  admin('admin', 'Admin'),
+  creative('creative', 'Creative');
 
   const WorkKind(this.db, this.label);
 

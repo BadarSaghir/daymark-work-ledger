@@ -44,6 +44,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   late final TextEditingController _steps;
   late final TextEditingController _estimate;
   late final TextEditingController _blocked;
+  late final TextEditingController _reminderNote;
 
   late String? _categoryId;
   late WorkKind _kind;
@@ -54,6 +55,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   late DateTime? _start;
   late DateTime? _end;
   late DateTime? _due;
+  late DateTime? _reminderAt;
 
   bool _saving = false;
   String? _error;
@@ -71,9 +73,12 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
       text: task?.estimateMinutes?.toString() ?? '',
     );
     _blocked = TextEditingController(text: task?.blockedReason ?? '');
+    _reminderNote = TextEditingController(text: task?.reminderNote ?? '');
     _categoryId = task?.categoryId;
     if (task == null) {
-      final categories = ref.read(categoriesProvider).value ?? const [];
+      final categories = (ref.read(categoriesProvider).value ?? const [])
+          .where((category) => !category.archived)
+          .toList();
       if (categories.isNotEmpty) _categoryId = categories.first.id;
     }
     _kind = task?.kind ?? WorkKind.official;
@@ -86,6 +91,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
     _start = task?.scheduledStart;
     _end = task?.scheduledEnd;
     _due = task?.dueAt;
+    _reminderAt = task?.reminderAt;
   }
 
   @override
@@ -95,6 +101,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
     _steps.dispose();
     _estimate.dispose();
     _blocked.dispose();
+    _reminderNote.dispose();
     super.dispose();
   }
 
@@ -125,6 +132,34 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
     );
     if (picked == null) return;
     setState(() => _due = DateTime(picked.year, picked.month, picked.day, 17));
+  }
+
+  Future<void> _pickReminder() async {
+    final now = DateTime.now();
+    final initial = _reminderAt ?? _start ?? now.add(const Duration(hours: 1));
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+      helpText: 'Remind me on…',
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+      helpText: 'Remind me at…',
+    );
+    if (time == null) return;
+    setState(() {
+      _reminderAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
   }
 
   Future<void> _pickTime({required bool start}) async {
@@ -197,6 +232,12 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           scheduledStart: _start,
           scheduledEnd: _end,
           dueAt: _due,
+          reminderAt: _reminderAt,
+          reminderNote: _reminderAt == null
+              ? null
+              : (_reminderNote.text.trim().isEmpty
+                    ? null
+                    : _reminderNote.text.trim()),
           blockedReason: _status == TaskStatus.blocked
               ? _blocked.text.trim()
               : null,
@@ -231,6 +272,12 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           scheduledStart: _start,
           scheduledEnd: _end,
           dueAt: _due,
+          reminderAt: _reminderAt,
+          reminderNote: _reminderAt == null
+              ? null
+              : (_reminderNote.text.trim().isEmpty
+                    ? null
+                    : _reminderNote.text.trim()),
           notesMd: _notes.text,
           stepTitles: stepTitles,
         );
@@ -401,8 +448,44 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
                     ? null
                     : () => setState(() => _due = null),
               ),
+              _DateChip(
+                icon: Icons.notifications_active_outlined,
+                label: _reminderAt == null
+                    ? 'Custom reminder'
+                    : 'Remind ${dateLabel(_reminderAt!)} · '
+                          '${timeLabel(_reminderAt!)}',
+                active: _reminderAt != null,
+                onTap: _pickReminder,
+                onClear: _reminderAt == null
+                    ? null
+                    : () => setState(() {
+                        _reminderAt = null;
+                        _reminderNote.clear();
+                      }),
+              ),
             ],
           ),
+          if (_reminderAt != null) ...[
+            const SizedBox(height: AppSpace.md),
+            TextField(
+              controller: _reminderNote,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Reminder note (optional)',
+                hintText: 'What should this nudge say?',
+                prefixIcon: Icon(Icons.notifications_none_rounded, size: 18),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'A custom reminder fires at this exact local time, in addition to '
+              'the start and deadline reminders in Settings.',
+              style: AppText.bodySmall.copyWith(
+                color: colors.inkFaint,
+                fontSize: 10.5,
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpace.xl),
           if (wide)
             Row(

@@ -33,19 +33,20 @@ Most tools ask you to choose between a rigid project manager and a blank notes a
 | Area | What is there |
 | --- | --- |
 | **Today** | A calm dashboard with today's plan, inbox, overdue work, focus target, and a quick capture shortcut. |
+| **Local accounts** | Multiple offline profiles with separate SQLite ledgers, backups, reminders, Nearby history, and Google Drive links. Accounts are remembered for one-tap switching; **Sign out** returns to the account picker without deleting anything. |
 | **Planner** | Plan by day or week, schedule blocks, and move work without losing its history. |
 | **Task detail** | Markdown notes, subtasks with progress, scheduling, estimates, priority, effort, work kind, and a complete activity trail. |
 | **Timers** | One live session at a time; start, pause, resume, stop, recover after a crash, and accumulate exact segments. A general stopwatch sits beside per-task timing. |
 | **Calendar** | A month view with planned load, completed work, and day drill-down. |
 | **Journal** | One markdown entry per day, mood and energy, streaks, search, and date navigation. |
 | **Insights** | Trends, focus totals, estimate accuracy, a 12-week focus heatmap, and category distribution. |
-| **Categories** | Colour, icon, weight (0.5–2.0), archive, and safe deletion. |
+| **Categories** | Colour, icon, weight (0.5–2.0), archive, and safe deletion. Search plus paginated category lists and a shared searchable picker keep hundreds of categories usable on phones. |
 | **Backups** | Manual or daily automatic backups, retention, import validation, pre-restore safety copies, and portable markdown mirrors. |
-| **Google Drive** | One-tap **Continue with Google** in builds with embedded OAuth credentials, or guided self-hosted setup. Mirrors to a user-owned Drive folder with multiple accounts, retention, cloud restore, and automatic uploads at most every 20 hours. |
+| **Google Drive** | One-tap **Continue with Google** in builds with embedded OAuth credentials, or guided self-hosted setup. Mirrors to a user-owned Drive folder with multiple Google accounts, retention, cloud restore, and automatic uploads at most every 20 hours. Each local account has its own Google link; signed-out accounts stay remembered for a quick return. |
 | **Reminders** | Offline OS notifications for task starts, deadlines, and a daily review, with configurable lead time and review time. |
 | **Nearby** | LAN discovery, QR pairing, a one-tap **Sync now** button, separate Sync / Send / Inbox / History tabs, six-digit transfer codes, note and file transfer, and a persistent share log. |
-| **Branding** | Adaptive Android icon with themed monochrome layer, iOS/macOS/Windows launcher icons, Linux desktop entry, and a notification icon. |
-| **Interface** | Warm paper palette, deep green and persimmon accents, adaptive sidebar / rail / bottom navigation, command palette, and compact layouts down to phone width. |
+| **Branding** | Adaptive Android icon with themed monochrome layer, iOS/macOS/Windows launcher icons, a Linux bundle-aware window and menu icon, Windows taskbar AppUserModelID, and a notification icon. |
+| **Interface** | Warm paper palette, deep green and persimmon accents, adaptive sidebar / rail / bottom navigation, command palette, compact layouts down to phone width, and labelled icon menus on every platform. |
 
 ## The weight formula
 
@@ -110,6 +111,11 @@ GitHub Actions secrets. The card then shows **Continue with Google**:
 2. Approve the narrow Drive permission in the browser.
 3. Daymark creates a private **Daymark Backups** folder and begins mirroring.
 4. Add more Google accounts later and choose which one is active.
+5. Use **Sign out** to keep an account remembered while clearing its refresh token. The row stays in the list for one-tap reconnection; **Forget this account** removes it.
+
+Google links belong to the active **local account**. Switching local accounts
+switches the Google account list and Drive folder too, so two people sharing a
+device never see each other's cloud configuration.
 
 The OAuth callback uses a one-shot loopback listener and PKCE. A build without
 embedded credentials stays fully functional and shows guided setup instead.
@@ -233,7 +239,7 @@ make test                   # flutter test
 make check                  # format check + analyze + tests
 ```
 
-The test suite covers the weight formula, date and duration helpers, backup checksums and restore safety, Google Drive config and built-in OAuth parsing, LAN pairing and history serialization, reminder preference parsing, compact and desktop shell layouts, and overflow regressions. Widget tests use `databaseFactoryFfiNoIsolate` and seed a temporary database outside the widget fake-async zone.
+The test suite covers the weight formula, date and duration helpers, backup checksums and restore safety, Google Drive config, signed-out remembered accounts, built-in OAuth parsing, local account registry and isolation paths, LAN pairing and history serialization, reminder preference parsing, compact and desktop shell layouts, and overflow regressions. Widget tests use `databaseFactoryFfiNoIsolate` and seed a temporary database outside the widget fake-async zone.
 
 ## Project structure
 
@@ -259,12 +265,17 @@ test/                       Unit and widget tests
 
 ## Data and privacy
 
-- Local database: `getApplicationSupportDirectory()/data/daymark.db`
-- Backups: `getApplicationSupportDirectory()/backups/`
-- Pre-migration snapshots: `getApplicationSupportDirectory()/pre_migration/`
-- Nearby inbox and transfer history: `getApplicationSupportDirectory()/nearby/`
-- Google OAuth client and refresh tokens: `getApplicationSupportDirectory()/cloud/google_drive.json`
-- Reminder preferences: `getApplicationSupportDirectory()/config/notifications.json`
+The first local account adopts the original single-ledger layout directly under
+the application support root. Additional local accounts live under
+`accounts/<account-id>/` with an identical internal layout:
+
+- Local database: `getApplicationSupportDirectory()/data/daymark.db` (first account) or `accounts/<id>/data/daymark.db`
+- Backups: `getApplicationSupportDirectory()/backups/` or `accounts/<id>/backups/`
+- Pre-migration snapshots: `getApplicationSupportDirectory()/pre_migration/` or `accounts/<id>/pre_migration/`
+- Nearby inbox and transfer history: `getApplicationSupportDirectory()/nearby/` or `accounts/<id>/nearby/`
+- Google OAuth client and refresh tokens: `getApplicationSupportDirectory()/cloud/google_drive.json` or `accounts/<id>/cloud/google_drive.json`
+- Reminder preferences: `getApplicationSupportDirectory()/config/notifications.json` or `accounts/<id>/config/notifications.json`
+- Remembered local accounts: `getApplicationSupportDirectory()/local_accounts.json`
 
 The app contains no analytics, ads, crash reporting, or telemetry. Network
 activity is limited to:

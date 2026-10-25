@@ -88,6 +88,8 @@ class TasksController extends AsyncNotifier<List<TaskView>> {
     DateTime? scheduledStart,
     DateTime? scheduledEnd,
     DateTime? dueAt,
+    DateTime? reminderAt,
+    String? reminderNote,
     String notesMd = '',
     List<String> stepTitles = const [],
   }) async {
@@ -105,6 +107,8 @@ class TasksController extends AsyncNotifier<List<TaskView>> {
           scheduledStart: scheduledStart,
           scheduledEnd: scheduledEnd,
           dueAt: dueAt,
+          reminderAt: reminderAt,
+          reminderNote: reminderNote,
           notesMd: notesMd,
           stepTitles: stepTitles,
         );

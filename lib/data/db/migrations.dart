@@ -9,11 +9,11 @@ import '../models/app_settings.dart';
 class Migrations {
   Migrations._();
 
-  static const int latestVersion = 1;
+  static const int latestVersion = 2;
 
   static Future<void> create(Database db) async {
     final batch = db.batch();
-    for (final statement in _v1) {
+    for (final statement in [..._v1, ..._v2]) {
       batch.execute(statement);
     }
     await batch.commit(noResult: true);
@@ -28,9 +28,10 @@ class Migrations {
             await db.execute(statement);
           }
           await _seed(db);
-        // Future versions:
-        // case 2:
-        //   await db.execute('ALTER TABLE tasks ADD COLUMN recurrence_rule TEXT');
+        case 2:
+          for (final statement in _v2) {
+            await db.execute(statement);
+          }
         default:
           throw StateError('No migration registered for schema v$version');
       }
@@ -183,5 +184,25 @@ class Migrations {
       value TEXT NOT NULL
     )
     ''',
+  ];
+
+  /// v2 adds per-task reminders and task attachments. The attachment rows are
+  /// metadata; the bytes live beside the profile database and are bundled into
+  /// backups and single-task shares.
+  static const List<String> _v2 = [
+    'ALTER TABLE tasks ADD COLUMN reminder_at INTEGER',
+    'ALTER TABLE tasks ADD COLUMN reminder_note TEXT',
+    '''
+    CREATE TABLE IF NOT EXISTS task_attachments (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL DEFAULT '',
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      relative_path TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id)',
   ];
 }

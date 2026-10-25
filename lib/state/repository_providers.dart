@@ -11,12 +11,15 @@ import '../data/repositories/activity_repository.dart';
 import '../data/repositories/category_repository.dart';
 import '../data/repositories/journal_repository.dart';
 import '../data/repositories/settings_repository.dart';
+import '../data/repositories/task_attachment_repository.dart';
 import '../data/repositories/task_repository.dart';
 import '../data/repositories/timer_repository.dart';
 import '../data/services/backup_service.dart';
 import '../data/services/demo_service.dart';
 import '../data/services/google_drive_service.dart';
 import '../data/services/notification_service.dart';
+import '../data/services/task_attachment_service.dart';
+import '../data/services/task_bundle_service.dart';
 import 'local_account_controller.dart';
 
 /// The database for the currently active local profile.
@@ -45,6 +48,10 @@ final timerRepositoryProvider = Provider<TimerRepository>(
   (ref) => TimerRepository(ref.watch(databaseProvider)),
 );
 
+final taskAttachmentRepositoryProvider = Provider<TaskAttachmentRepository>(
+  (ref) => TaskAttachmentRepository(ref.watch(databaseProvider)),
+);
+
 final journalRepositoryProvider = Provider<JournalRepository>(
   (ref) => JournalRepository(ref.watch(databaseProvider)),
 );
@@ -68,9 +75,41 @@ final backupDirectoryProvider = FutureProvider<Directory>((ref) async {
   return Directory(p.join(root.path, 'backups'));
 });
 
+final taskFilesDirectoryProvider = FutureProvider<Directory>((ref) async {
+  final support = await getApplicationSupportDirectory();
+  final account = ref.watch(activeLocalAccountProvider);
+  final root = account?.directory(support) ?? support;
+  return Directory(p.join(root.path, 'task_files'));
+});
+
+final taskAttachmentServiceProvider = FutureProvider<TaskAttachmentService>((
+  ref,
+) async {
+  final directory = await ref.watch(taskFilesDirectoryProvider.future);
+  return TaskAttachmentService(
+    ref.watch(taskAttachmentRepositoryProvider),
+    directory: directory,
+  );
+});
+
+final taskBundleServiceProvider = FutureProvider<TaskBundleService>((
+  ref,
+) async {
+  final directory = await ref.watch(taskFilesDirectoryProvider.future);
+  return TaskBundleService(
+    ref.watch(databaseProvider),
+    attachmentDirectory: directory,
+  );
+});
+
 final backupServiceProvider = FutureProvider<BackupService>((ref) async {
   final directory = await ref.watch(backupDirectoryProvider.future);
-  return BackupService(ref.watch(databaseProvider), backupDirectory: directory);
+  final taskFiles = await ref.watch(taskFilesDirectoryProvider.future);
+  return BackupService(
+    ref.watch(databaseProvider),
+    backupDirectory: directory,
+    attachmentDirectory: taskFiles,
+  );
 });
 
 /// Reads the optional OAuth client that CI or a local release build embeds in

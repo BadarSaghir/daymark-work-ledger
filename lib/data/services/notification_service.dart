@@ -93,6 +93,9 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  bool? _nativeSchedulingSupported;
+  int _linuxFallbackCount = 0;
+  final Set<String> _firedFallbackReminders = <String>{};
 
   File get _prefsFile =>
       File(p.join(configDirectory.path, 'notifications.json'));
@@ -200,6 +203,7 @@ class NotificationService {
     }
     await initialize();
     await _plugin.cancelAll();
+    _linuxFallbackCount = 0;
     var scheduled = 0;
     final now = DateTime.now();
     final horizon = now.add(const Duration(days: 60));
@@ -258,6 +262,23 @@ class NotificationService {
           );
           if (ok) scheduled++;
         }
+        final reminderAt = task.reminderAt;
+        if (reminderAt != null &&
+            reminderAt.isAfter(now) &&
+            reminderAt.isBefore(horizon)) {
+          final note = task.reminderNote?.trim() ?? '';
+          final ok = await _schedule(
+            id: _notificationId('${task.id}:custom'),
+            title: 'Reminder · ${task.title}',
+            body: note.isEmpty
+                ? (category == null
+                      ? 'You asked to be reminded about this task.'
+                      : '$category · custom reminder')
+                : note,
+            when: reminderAt,
+          );
+          if (ok) scheduled++;
+        }
       }
     }
 
@@ -269,6 +290,8 @@ class NotificationService {
   }
 
   Future<void> cancelAll() async {
+    _linuxFallbackCount = 0;
+    _firedFallbackReminders.clear();
     try {
       await initialize();
       await _plugin.cancelAll();
@@ -278,12 +301,133 @@ class NotificationService {
   }
 
   Future<int> pendingCount() async {
+    if (Platform.isLinux) return _linuxFallbackCount;
     try {
       await initialize();
       return (await _plugin.pendingNotificationRequests()).length;
     } catch (_) {
       return 0;
     }
+  }
+
+  /// Linux has no scheduled-notification API in the plugin. While Daymark is
+  /// open, this pulse raises reminders that have just become due. The OS still
+  /// owns rendering; the app only supplies the timing. Returns the number of
+  /// notifications raised in this pass.
+  Future<int> checkDueReminders(
+    List<TaskView> tasks,
+    ReminderPreferences preferences, {
+    DateTime? at,
+  }) async {
+    if (!Platform.isLinux || !preferences.enabled) return 0;
+    final now = at ?? DateTime.now();
+    final due = <({String key, DateTime when, String title, String body})>[];
+
+    if (preferences.taskReminders) {
+      for (final view in tasks) {
+        final task = view.task;
+        if (task.isDone || task.archived) continue;
+        final category = view.category?.name;
+        final start = task.scheduledStart;
+        if (start != null) {
+          final when = start.subtract(
+            Duration(minutes: preferences.leadMinutes),
+          );
+          if (_isFresh(when, now)) {
+            due.add((
+              key: '${task.id}:start:${when.millisecondsSinceEpoch}',
+              when: when,
+              title: preferences.leadMinutes == 0
+                  ? 'Starting now · ${task.title}'
+                  : 'Starts in ${preferences.leadMinutes} min',
+              body: [
+                task.title,
+                ?category,
+                'Scheduled ${_timeLabel(start)}',
+              ].join(' · '),
+            ));
+          }
+        }
+        final deadline = task.dueAt;
+        if (deadline != null && _isFresh(deadline, now)) {
+          due.add((
+            key: '${task.id}:due:${deadline.millisecondsSinceEpoch}',
+            when: deadline,
+            title: 'Due ${_timeLabel(deadline)} · ${task.title}',
+            body: category == null
+                ? 'This is the deadline you set.'
+                : '$category · deadline',
+          ));
+        }
+        final custom = task.reminderAt;
+        if (custom != null && _isFresh(custom, now)) {
+          final note = task.reminderNote?.trim() ?? '';
+          due.add((
+            key: '${task.id}:custom:${custom.millisecondsSinceEpoch}',
+            when: custom,
+            title: 'Reminder · ${task.title}',
+            body: note.isEmpty
+                ? (category == null
+                      ? 'You asked to be reminded about this task.'
+                      : '$category · custom reminder')
+                : note,
+          ));
+        }
+      }
+    }
+
+    if (preferences.dailyReview) {
+      var review = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        preferences.reviewHour,
+        preferences.reviewMinute,
+      );
+      if (review.isAfter(now)) {
+        review = review.subtract(const Duration(days: 1));
+      }
+      if (_isFresh(review, now, grace: const Duration(hours: 12))) {
+        due.add((
+          key:
+              'review:${review.year}-${review.month}-${review.day}:'
+              '${review.millisecondsSinceEpoch}',
+          when: review,
+          title: 'Close the day',
+          body:
+              'A few minutes to mark what moved, what stalled, and what '
+              'tomorrow needs.',
+        ));
+      }
+    }
+
+    due.sort((a, b) => a.when.compareTo(b.when));
+    var raised = 0;
+    for (final reminder in due) {
+      if (!_firedFallbackReminders.add(reminder.key)) continue;
+      await _showNow(
+        id: _notificationId(reminder.key),
+        title: reminder.title,
+        body: reminder.body,
+      );
+      raised++;
+    }
+    // Keep the set from growing across a long-running desktop session.
+    if (_firedFallbackReminders.length > 500) {
+      _firedFallbackReminders.removeAll(
+        _firedFallbackReminders.take(200).toSet(),
+      );
+    }
+    return raised;
+  }
+
+  static bool _isFresh(
+    DateTime when,
+    DateTime now, {
+    Duration grace = const Duration(minutes: 8),
+  }) {
+    if (when.isAfter(now)) return false;
+    return now.difference(when) <= grace;
   }
 
   Future<void> showTest() async {
@@ -339,8 +483,44 @@ class NotificationService {
       );
       return true;
     } catch (_) {
+      // Linux has no scheduler in flutter_local_notifications. Count it for
+      // the settings summary and let AppShell's in-app pulse display it.
+      if (Platform.isLinux) {
+        _linuxFallbackCount++;
+        return true;
+      }
       // A platform without scheduling support should not block the rest.
       return false;
+    }
+  }
+
+  Future<void> _showNow({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    try {
+      await initialize();
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            channelDescription: _channelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: 'ic_notification',
+          ),
+          iOS: DarwinNotificationDetails(),
+          macOS: DarwinNotificationDetails(),
+          linux: LinuxNotificationDetails(),
+        ),
+      );
+    } catch (_) {
+      // A shell without a notification daemon must not break the app.
     }
   }
 
@@ -383,6 +563,10 @@ class NotificationService {
       );
       return true;
     } catch (_) {
+      if (Platform.isLinux) {
+        _linuxFallbackCount++;
+        return true;
+      }
       return false;
     }
   }
