@@ -199,6 +199,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   onCapture: _capture,
                   onNewTask: _openTaskEditor,
                   onPalette: _openPalette,
+                  onAccount: () => showLocalAccountSwitcher(context),
                 )
               else if (!compact)
                 _Rail(
@@ -317,6 +318,7 @@ class _Sidebar extends StatelessWidget {
     required this.onCapture,
     required this.onNewTask,
     required this.onPalette,
+    required this.onAccount,
   });
 
   final int index;
@@ -326,6 +328,7 @@ class _Sidebar extends StatelessWidget {
   final VoidCallback onCapture;
   final VoidCallback onNewTask;
   final VoidCallback onPalette;
+  final VoidCallback onAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -488,55 +491,69 @@ class _Sidebar extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.all(AppSpace.md),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: colors.primarySoft,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        initial,
-                        style: AppText.bodyMedium.copyWith(
-                          color: colors.primary,
-                          fontWeight: FontWeight.w800,
+              child: InkWell(
+                onTap: onAccount,
+                borderRadius: BorderRadius.circular(AppRadius.input),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: colors.primarySoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            initial,
+                            style: AppText.bodyMedium.copyWith(
+                              color: colors.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayName.trim().isEmpty ? 'Daymark' : displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.bodySmall.copyWith(
-                            color: colors.ink,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      const SizedBox(width: AppSpace.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName.trim().isEmpty
+                                  ? 'Daymark'
+                                  : displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.bodySmall.copyWith(
+                                color: colors.ink,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              'Local account · switch',
+                              style: AppText.bodySmall.copyWith(
+                                color: colors.inkFaint,
+                                fontSize: 9.5,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          'Local · private',
-                          style: AppText.bodySmall.copyWith(
-                            color: colors.inkFaint,
-                            fontSize: 9.5,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        tooltip: 'Quick capture',
+                        onPressed: onCapture,
+                        icon: const Icon(Icons.bolt_rounded, size: 17),
+                      ),
+                      Icon(
+                        Icons.unfold_more_rounded,
+                        size: 15,
+                        color: colors.inkFaint,
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: 'Quick capture',
-                    onPressed: onCapture,
-                    icon: const Icon(Icons.bolt_rounded, size: 17),
-                  ),
-                ],
+                ),
               ),
             ),
           ],
