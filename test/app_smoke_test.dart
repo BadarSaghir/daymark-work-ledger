@@ -75,7 +75,10 @@ void main() {
     await pumpApp(tester, const Size(390, 844));
 
     await tester.tap(find.text('Sync'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
 
     expect(find.text('Nearby'), findsWidgets);
     expect(find.text('Go online'), findsWidgets);

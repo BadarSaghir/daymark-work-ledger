@@ -14,6 +14,7 @@ import '../../core/theme/app_typography.dart';
 import '../../core/ui/feedback.dart';
 import '../../core/ui/form.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/menu_action.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
@@ -992,9 +993,27 @@ class _BackupRow extends StatelessWidget {
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(value: 'restore', child: Text('Restore')),
-              PopupMenuItem(value: 'share', child: Text('Share / export file')),
-              PopupMenuItem(value: 'delete', child: Text('Delete file')),
+              PopupMenuItem(
+                value: 'restore',
+                child: MenuAction(
+                  icon: Icons.restore_rounded,
+                  label: 'Restore',
+                ),
+              ),
+              PopupMenuItem(
+                value: 'share',
+                child: MenuAction(
+                  icon: Icons.ios_share_rounded,
+                  label: 'Share / export file',
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: MenuAction(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete file',
+                ),
+              ),
             ],
           ),
         ],

@@ -7,6 +7,7 @@ import '../../core/ui/enum_ui.dart';
 import '../../core/ui/feedback.dart';
 import '../../core/ui/form.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/menu_action.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/durations.dart';
@@ -15,17 +16,52 @@ import '../../data/models/task_view.dart';
 import '../../state/categories_controller.dart';
 import '../../state/tasks_controller.dart';
 
-class CategoriesPage extends ConsumerWidget {
+class CategoriesPage extends ConsumerStatefulWidget {
   const CategoriesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CategoriesPage> createState() => _CategoriesPageState();
+}
+
+class _CategoriesPageState extends ConsumerState<CategoriesPage> {
+  static const _pageSize = 12;
+  static const _archivedPageSize = 8;
+
+  final _search = TextEditingController();
+  int _page = 0;
+  int _archivedVisible = _archivedPageSize;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.colors;
     final categoriesAsync = ref.watch(categoriesProvider);
     final categories = categoriesAsync.value ?? const <Category>[];
     final views = ref.watch(tasksProvider).value ?? const <TaskView>[];
-    final active = categories.where((c) => !c.archived).toList();
-    final archived = categories.where((c) => c.archived).toList();
+    final query = _search.text.trim().toLowerCase();
+    bool matches(Category category) =>
+        query.isEmpty || category.name.toLowerCase().contains(query);
+    final active = categories
+        .where((category) => !category.archived && matches(category))
+        .toList();
+    final archived = categories
+        .where((category) => category.archived && matches(category))
+        .toList();
+    final pages = active.isEmpty ? 1 : ((active.length - 1) ~/ _pageSize) + 1;
+    final page = _page.clamp(0, pages - 1).toInt();
+    final start = page * _pageSize;
+    final visible = active.skip(start).take(_pageSize).toList();
+    final visibleArchived = archived.take(_archivedVisible).toList();
+    final tasksByCategory = <String, List<TaskView>>{};
+    for (final view in views) {
+      final id = view.task.categoryId;
+      if (id != null) (tasksByCategory[id] ??= []).add(view);
+    }
 
     return PageWidth(
       child: SingleChildScrollView(
@@ -51,34 +87,143 @@ class CategoriesPage extends ConsumerWidget {
             if (categoriesAsync.isLoading && categories.isEmpty)
               const LoadingBlock(height: 240)
             else ...[
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final cardWidth = constraints.maxWidth >= 1100
-                      ? (constraints.maxWidth - AppSpace.lg * 2) / 3
-                      : constraints.maxWidth >= 700
-                      ? (constraints.maxWidth - AppSpace.lg) / 2
-                      : constraints.maxWidth;
-                  return Wrap(
-                    spacing: AppSpace.lg,
-                    runSpacing: AppSpace.lg,
-                    children: [
-                      for (final category in active)
-                        SizedBox(
-                          width: cardWidth,
-                          child: _CategoryCard(
-                            category: category,
-                            views: views,
-                            onEdit: () =>
-                                showCategoryEditor(context, existing: category),
-                            onArchive: () =>
-                                _archive(ref, context, category, true),
-                            onDelete: () => _delete(ref, context, category),
-                          ),
-                        ),
-                    ],
-                  );
-                },
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _search,
+                      decoration: InputDecoration(
+                        hintText: 'Search ${categories.length} categories…',
+                        prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                        suffixIcon: _search.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear search',
+                                onPressed: () {
+                                  _search.clear();
+                                  setState(() => _page = 0);
+                                },
+                                icon: const Icon(Icons.close_rounded, size: 17),
+                              ),
+                      ),
+                      onChanged: (_) => setState(() => _page = 0),
+                    ),
+                  ),
+                  if (active.isNotEmpty) ...[
+                    const SizedBox(width: AppSpace.md),
+                    Text(
+                      '${active.length} active',
+                      style: AppText.monoData.copyWith(
+                        color: colors.inkFaint,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ],
               ),
+              const SizedBox(height: AppSpace.lg),
+              if (visible.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(AppSpace.xl),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    border: Border.all(color: colors.line),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        query.isEmpty
+                            ? Icons.category_outlined
+                            : Icons.search_off_rounded,
+                        size: 26,
+                        color: colors.inkFaint,
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      Text(
+                        query.isEmpty
+                            ? 'No categories yet'
+                            : 'No categories match “${_search.text.trim()}”',
+                        textAlign: TextAlign.center,
+                        style: AppText.titleM.copyWith(color: colors.ink),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        query.isEmpty
+                            ? 'Create a category to give this work a weight.'
+                            : 'Try a shorter search, or clear it to see all '
+                                  'categories.',
+                        textAlign: TextAlign.center,
+                        style: AppText.bodySmall.copyWith(
+                          color: colors.inkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = constraints.maxWidth >= 1100
+                        ? (constraints.maxWidth - AppSpace.lg * 2) / 3
+                        : constraints.maxWidth >= 700
+                        ? (constraints.maxWidth - AppSpace.lg) / 2
+                        : constraints.maxWidth;
+                    return Wrap(
+                      spacing: AppSpace.lg,
+                      runSpacing: AppSpace.lg,
+                      children: [
+                        for (final category in visible)
+                          SizedBox(
+                            width: cardWidth,
+                            child: _CategoryCard(
+                              category: category,
+                              tasks: tasksByCategory[category.id] ?? const [],
+                              onEdit: () => showCategoryEditor(
+                                context,
+                                existing: category,
+                              ),
+                              onArchive: () =>
+                                  _archive(context, category, true),
+                              onDelete: () => _delete(context, category),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              if (active.length > _pageSize) ...[
+                const SizedBox(height: AppSpace.lg),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Previous page',
+                      onPressed: page == 0
+                          ? null
+                          : () => setState(() => _page = page - 1),
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '$start–${start + visible.length} of ${active.length} '
+                        '· page ${page + 1} of $pages',
+                        textAlign: TextAlign.center,
+                        style: AppText.monoData.copyWith(
+                          color: colors.inkFaint,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Next page',
+                      onPressed: page >= pages - 1
+                          ? null
+                          : () => setState(() => _page = page + 1),
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: AppSpace.xl),
               _WeightExplainer(),
               if (archived.isNotEmpty) ...[
@@ -100,7 +245,7 @@ class CategoriesPage extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpace.sm),
-                for (final category in archived)
+                for (final category in visibleArchived)
                   Container(
                     margin: const EdgeInsets.only(bottom: AppSpace.sm),
                     padding: const EdgeInsets.symmetric(
@@ -120,19 +265,42 @@ class CategoriesPage extends ConsumerWidget {
                           color: colors.inkFaint,
                         ),
                         const SizedBox(width: AppSpace.sm),
-                        Text(
-                          category.name,
-                          style: AppText.bodySmall.copyWith(
-                            color: colors.inkMuted,
+                        Expanded(
+                          child: Text(
+                            category.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.bodySmall.copyWith(
+                              color: colors.inkMuted,
+                            ),
                           ),
                         ),
-                        const Spacer(),
                         TextButton(
-                          onPressed: () =>
-                              _archive(ref, context, category, false),
+                          onPressed: () => _archive(context, category, false),
                           child: const Text('Restore'),
                         ),
                       ],
+                    ),
+                  ),
+                if (archived.length > _archivedVisible)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _archivedVisible += _archivedPageSize),
+                      icon: const Icon(Icons.expand_more_rounded, size: 17),
+                      label: Text(
+                        'Show ${archived.length - _archivedVisible} more archived',
+                      ),
+                    ),
+                  )
+                else if (_archivedVisible > _archivedPageSize)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () =>
+                          setState(() => _archivedVisible = _archivedPageSize),
+                      child: const Text('Show fewer'),
                     ),
                   ),
               ],
@@ -144,7 +312,6 @@ class CategoriesPage extends ConsumerWidget {
   }
 
   Future<void> _archive(
-    WidgetRef ref,
     BuildContext context,
     Category category,
     bool archived,
@@ -160,11 +327,7 @@ class CategoriesPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _delete(
-    WidgetRef ref,
-    BuildContext context,
-    Category category,
-  ) async {
+  Future<void> _delete(BuildContext context, Category category) async {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Delete “${category.name}”?',
@@ -193,14 +356,14 @@ class CategoriesPage extends ConsumerWidget {
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
     required this.category,
-    required this.views,
+    required this.tasks,
     required this.onEdit,
     required this.onArchive,
     required this.onDelete,
   });
 
   final Category category;
-  final List<TaskView> views;
+  final List<TaskView> tasks;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
   final VoidCallback onDelete;
@@ -208,9 +371,6 @@ class _CategoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final tasks = views
-        .where((view) => view.task.categoryId == category.id)
-        .toList();
     final open = tasks.where((view) => !view.isDone).length;
     final done = tasks.where((view) => view.isDone).length;
     final tracked = tasks.fold<int>(0, (sum, view) => sum + view.trackedMs);
@@ -292,9 +452,27 @@ class _CategoryCard extends StatelessWidget {
                         }
                       },
                       itemBuilder: (context) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Edit')),
-                        PopupMenuItem(value: 'archive', child: Text('Archive')),
-                        PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: MenuAction(
+                            icon: Icons.edit_outlined,
+                            label: 'Edit',
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'archive',
+                          child: MenuAction(
+                            icon: Icons.archive_outlined,
+                            label: 'Archive',
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: MenuAction(
+                            icon: Icons.delete_outline_rounded,
+                            label: 'Delete',
+                          ),
+                        ),
                       ],
                     ),
                   ],

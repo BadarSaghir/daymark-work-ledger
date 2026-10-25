@@ -10,6 +10,7 @@ import '../../core/ui/enum_ui.dart';
 import '../../core/ui/feedback.dart';
 import '../../core/ui/form.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/menu_action.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
@@ -781,7 +782,13 @@ class _EntryRow extends StatelessWidget {
               if (value == 'delete') onDelete();
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(value: 'delete', child: Text('Delete entry')),
+              PopupMenuItem(
+                value: 'delete',
+                child: MenuAction(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete entry',
+                ),
+              ),
             ],
           ),
         ],

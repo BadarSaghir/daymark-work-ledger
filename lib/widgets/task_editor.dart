@@ -14,6 +14,7 @@ import '../data/models/enums.dart';
 import '../data/models/task_view.dart';
 import '../state/categories_controller.dart';
 import '../state/tasks_controller.dart';
+import 'category_picker.dart';
 
 Future<void> showTaskEditor(
   BuildContext context, {
@@ -480,29 +481,10 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   }
 
   Widget _categorySection(List<Category> categories) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const FormLabel('Category'),
-        Wrap(
-          spacing: AppSpace.sm,
-          runSpacing: AppSpace.sm,
-          children: [
-            for (final category in categories)
-              ChoicePill(
-                label: category.name,
-                selected: _categoryId == category.id,
-                color: category.colorValue,
-                onTap: () => setState(() => _categoryId = category.id),
-              ),
-            ChoicePill(
-              label: 'Unfiled',
-              selected: _categoryId == null,
-              onTap: () => setState(() => _categoryId = null),
-            ),
-          ],
-        ),
-      ],
+    return CategoryPickerField(
+      categories: categories,
+      selectedId: _categoryId,
+      onChanged: (id) => setState(() => _categoryId = id),
     );
   }
 

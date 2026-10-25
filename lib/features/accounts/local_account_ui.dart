@@ -4,14 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/brand_mark.dart';
-import '../../core/ui/feedback.dart';
-import '../../core/ui/form.dart';
 import '../../core/ui/layout.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../data/models/local_account.dart';
 import '../../state/local_account_controller.dart';
 import '../../state/ui_state.dart';
+import '../../app/nav.dart';
 
 /// Opens the profile switcher. The account list is always remembered; signing
 /// out only returns to the picker, it never deletes a ledger.
@@ -43,9 +42,7 @@ class LocalAccountGate extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(
-                    child: BrandMark(size: 42, showWordmark: true),
-                  ),
+                  const Center(child: BrandMark(size: 42, showWordmark: true)),
                   const SizedBox(height: AppSpace.x3),
                   Text(
                     'Choose a ledger',
@@ -281,7 +278,6 @@ class _LocalAccountCardState extends ConsumerState<LocalAccountCard> {
     );
     if (!confirmed) return;
     await ref.read(localAccountProvider.notifier).signOut();
-    if (mounted) Navigator.of(context).maybePop();
   }
 }
 
@@ -299,7 +295,10 @@ class _LocalAccountSheetState extends ConsumerState<_LocalAccountSheet> {
   Widget build(BuildContext context) {
     final local = ref.watch(localAccountProvider);
     if (local == null) {
-      return const SizedBox(height: 120, child: Center(child: Text('No local accounts')));
+      return const SizedBox(
+        height: 120,
+        child: Center(child: Text('No local accounts')),
+      );
     }
     return AppSheet(
       title: 'Local accounts',
@@ -508,10 +507,7 @@ class _SwitchAccountRow extends StatelessWidget {
           if (current)
             Text(
               'CURRENT',
-              style: AppText.label.copyWith(
-                color: colors.primary,
-                fontSize: 8,
-              ),
+              style: AppText.label.copyWith(color: colors.primary, fontSize: 8),
             )
           else
             TextButton(

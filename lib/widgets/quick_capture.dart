@@ -10,6 +10,7 @@ import '../core/utils/date_keys.dart';
 import '../data/models/enums.dart';
 import '../state/categories_controller.dart';
 import '../state/tasks_controller.dart';
+import 'category_picker.dart';
 
 /// A fast path into the ledger. Title first; everything else is optional.
 Future<void> showQuickCapture(
@@ -56,7 +57,6 @@ class _QuickCaptureState extends ConsumerState<QuickCapture> {
   WorkKind _kind = WorkKind.official;
   bool _saving = false;
   String? _error;
-  bool _categoryTouched = false;
 
   @override
   void initState() {
@@ -202,33 +202,10 @@ class _QuickCaptureState extends ConsumerState<QuickCapture> {
           ),
           if (categories.isNotEmpty) ...[
             const SizedBox(height: AppSpace.xl),
-            const FormLabel('Category'),
-            Wrap(
-              spacing: AppSpace.sm,
-              runSpacing: AppSpace.sm,
-              children: [
-                for (final category in categories.where((c) => !c.archived))
-                  ChoicePill(
-                    label: category.name,
-                    selected: _categoryId == category.id,
-                    color: category.colorValue,
-                    onTap: () {
-                      setState(() {
-                        _categoryId = category.id;
-                        _categoryTouched = true;
-                      });
-                    },
-                  ),
-                if (!_categoryTouched)
-                  Tooltip(
-                    message: 'No category is fine — you can add one later.',
-                    child: ChoicePill(
-                      label: 'Unfiled',
-                      selected: _categoryId == null,
-                      onTap: () => setState(() => _categoryId = null),
-                    ),
-                  ),
-              ],
+            CategoryPickerField(
+              categories: categories,
+              selectedId: _categoryId,
+              onChanged: (id) => setState(() => _categoryId = id),
             ),
           ],
           const SizedBox(height: AppSpace.xl),

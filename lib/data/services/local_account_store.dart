@@ -99,9 +99,7 @@ class LocalAccountStore {
           .toIso8601String()
           .replaceAll(':', '')
           .replaceAll('.', '');
-      await _registryFile.rename(
-        '${_registryFile.path}.corrupt-$stamp',
-      );
+      await _registryFile.rename('${_registryFile.path}.corrupt-$stamp');
     } catch (_) {
       // A read-only support directory will fail later with a clearer error.
     }

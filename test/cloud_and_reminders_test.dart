@@ -85,6 +85,25 @@ void main() {
       expect(second.label, 'second@example.com');
       expect(first.label, 'First · first@example.com');
     });
+
+    test('signs out while keeping the account remembered', () {
+      final signedOut = first.copyWith(clearRefreshToken: true);
+      expect(signedOut.isSignedIn, isFalse);
+      expect(signedOut.email, first.email);
+      expect(signedOut.id, first.id);
+
+      final decoded = GoogleDriveConfig.fromJson({
+        'clientId': 'client',
+        'clientSecret': 'secret',
+        'accounts': [signedOut.toJson(), second.toJson()],
+        'activeAccountId': signedOut.id,
+        'autoUpload': true,
+        'keepCount': 7,
+      });
+      expect(decoded.accounts, hasLength(2));
+      expect(decoded.activeAccount?.isSignedIn, isFalse);
+      expect(decoded.accounts.last.isSignedIn, isTrue);
+    });
   });
 
   group('GoogleOAuthDefaults', () {

@@ -29,11 +29,7 @@ class LocalAccount {
     return clean.substring(0, 1).toUpperCase();
   }
 
-  LocalAccount copyWith({
-    String? name,
-    DateTime? lastUsedAt,
-    bool? legacy,
-  }) {
+  LocalAccount copyWith({String? name, DateTime? lastUsedAt, bool? legacy}) {
     return LocalAccount(
       id: id,
       name: name ?? this.name,

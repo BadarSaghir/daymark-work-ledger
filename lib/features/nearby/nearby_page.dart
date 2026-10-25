@@ -15,6 +15,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/feedback.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/menu_action.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
@@ -2086,8 +2087,7 @@ class _QrScannerDialogState extends State<_QrScannerDialog> {
                   final denied =
                       error.errorCode ==
                       MobileScannerErrorCode.permissionDenied;
-                  final canOpenSettings =
-                      Platform.isAndroid || Platform.isIOS;
+                  final canOpenSettings = Platform.isAndroid || Platform.isIOS;
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpace.xl),
@@ -2769,8 +2769,20 @@ class _PeerRow extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'text', child: Text('Send a note')),
-                  PopupMenuItem(value: 'file', child: Text('Send a file')),
+                  PopupMenuItem(
+                    value: 'text',
+                    child: MenuAction(
+                      icon: Icons.notes_rounded,
+                      label: 'Send a note',
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'file',
+                    child: MenuAction(
+                      icon: Icons.attach_file_rounded,
+                      label: 'Send a file',
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -3003,8 +3015,20 @@ class _InboxRow extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'share', child: Text('Share copy')),
-                  PopupMenuItem(value: 'delete', child: Text('Remove')),
+                  PopupMenuItem(
+                    value: 'share',
+                    child: MenuAction(
+                      icon: Icons.ios_share_rounded,
+                      label: 'Share copy',
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: MenuAction(
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Remove',
+                    ),
+                  ),
                 ],
               ),
             ],

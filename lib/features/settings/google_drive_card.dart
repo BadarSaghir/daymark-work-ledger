@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/feedback.dart';
+import '../../core/ui/menu_action.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
@@ -81,24 +82,52 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
     }
   }
 
-  Future<void> _connect() async {
+  Future<void> _connect({String? loginHint}) async {
     final service = await _service();
     final account = await _run<GoogleDriveAccount>(
       'Waiting for Google…',
-      () => service.connectAccount(),
+      () => service.connectAccount(loginHint: loginHint),
     );
     if (account == null) return;
     _refresh();
     if (mounted) showToast(context, 'Connected ${account.email}');
   }
 
-  Future<void> _setActive(GoogleDriveAccount account) async {
+  Future<void> _useAccount(GoogleDriveAccount account) async {
+    if (!account.isSignedIn) {
+      await _connect(loginHint: account.email);
+      return;
+    }
     final service = await _service();
     final done = await _run<bool>('Switching account…', () async {
       await service.setActiveAccount(account.id);
       return true;
     });
     if (done == true) _refresh();
+  }
+
+  Future<void> _signOutAccount(GoogleDriveAccount account) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Sign out of ${account.email}?',
+      message:
+          'The account stays remembered here for a quick switch. Cloud files '
+          'and the Drive folder are untouched.',
+      confirmLabel: 'Sign out',
+      icon: Icons.logout_rounded,
+    );
+    if (!confirmed) return;
+    final service = await _service();
+    final done = await _run<bool>('Signing out…', () async {
+      await service.signOutAccount(account.id);
+      return true;
+    });
+    if (done == true) {
+      _refresh();
+      if (mounted) {
+        showToast(context, 'Google account signed out and remembered');
+      }
+    }
   }
 
   Future<void> _removeAccount(GoogleDriveAccount account) async {
@@ -367,8 +396,34 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
                             (value.activeAccountId == null &&
                                 account == value.accounts.first),
                         busy: _busy,
-                        onUse: () => _setActive(account),
+                        onUse: () => _useAccount(account),
+                        onSignOut: () => _signOutAccount(account),
                         onRemove: () => _removeAccount(account),
+                      ),
+                    if (value.activeAccount?.isSignedIn != true)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: 14,
+                              color: colors.gold,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'The active account is signed out. Sign in or '
+                                'choose another remembered account to upload '
+                                'or browse Drive.',
+                                style: AppText.bodySmall.copyWith(
+                                  color: colors.inkMuted,
+                                  fontSize: 10.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     const SizedBox(height: AppSpace.sm),
                     Wrap(
@@ -384,7 +439,10 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
                           label: const Text('Add another account'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: _busy ? null : _test,
+                          onPressed:
+                              _busy || value.activeAccount?.isSignedIn != true
+                              ? null
+                              : _test,
                           icon: const Icon(
                             Icons.check_circle_outline_rounded,
                             size: 16,
@@ -462,7 +520,10 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
                       runSpacing: AppSpace.sm,
                       children: [
                         FilledButton.icon(
-                          onPressed: _busy ? null : _uploadNow,
+                          onPressed:
+                              _busy || value.activeAccount?.isSignedIn != true
+                              ? null
+                              : _uploadNow,
                           icon: const Icon(
                             Icons.cloud_upload_outlined,
                             size: 17,
@@ -498,8 +559,9 @@ class _GoogleDriveCardState extends ConsumerState<GoogleDriveCard> {
                   const SizedBox(height: AppSpace.sm),
                   Text(
                     'Daymark uses the drive.file scope: it can only see and '
-                    'manage files it creates. Refresh tokens are stored in a '
-                    'separate local file, never inside ledger backups.',
+                    'manage files it creates. Accounts and refresh tokens are '
+                    'stored in this local account’s private folder, never inside '
+                    'ledger backups.',
                     style: AppText.bodySmall.copyWith(
                       color: colors.inkFaint,
                       fontSize: 9.8,
@@ -713,6 +775,7 @@ class _AccountRow extends StatelessWidget {
     required this.active,
     required this.busy,
     required this.onUse,
+    required this.onSignOut,
     required this.onRemove,
   });
 
@@ -720,6 +783,7 @@ class _AccountRow extends StatelessWidget {
   final bool active;
   final bool busy;
   final VoidCallback onUse;
+  final VoidCallback onSignOut;
   final VoidCallback onRemove;
 
   @override
@@ -748,9 +812,15 @@ class _AccountRow extends StatelessWidget {
               border: Border.all(color: colors.line),
             ),
             child: Icon(
-              active ? Icons.check_rounded : Icons.person_outline_rounded,
+              !account.isSignedIn
+                  ? Icons.logout_rounded
+                  : (active
+                        ? Icons.check_rounded
+                        : Icons.person_outline_rounded),
               size: 15,
-              color: active ? Colors.white : colors.inkFaint,
+              color: active && account.isSignedIn
+                  ? Colors.white
+                  : colors.inkFaint,
             ),
           ),
           const SizedBox(width: AppSpace.sm),
@@ -768,9 +838,13 @@ class _AccountRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  active
+                  !account.isSignedIn
+                      ? 'Signed out · remembered for a quick switch'
+                      : active
                       ? 'Active for uploads'
                       : 'Connected ${dateLabel(account.connectedAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AppText.bodySmall.copyWith(
                     color: colors.inkFaint,
                     fontSize: 10,
@@ -779,19 +853,47 @@ class _AccountRow extends StatelessWidget {
               ],
             ),
           ),
-          if (!active)
+          if (!account.isSignedIn)
             TextButton(
               onPressed: busy ? null : onUse,
-              child: const Text('Use'),
+              child: const Text('Sign in'),
+            )
+          else if (!active)
+            TextButton(onPressed: busy ? null : onUse, child: const Text('Use'))
+          else
+            TextButton(
+              onPressed: busy ? null : onSignOut,
+              child: const Text('Sign out'),
             ),
-          IconButton(
-            tooltip: 'Disconnect',
-            onPressed: busy ? null : onRemove,
+          PopupMenuButton<String>(
+            tooltip: 'Account options',
+            enabled: !busy,
             icon: Icon(
-              Icons.link_off_rounded,
-              size: 16,
+              Icons.more_vert_rounded,
+              size: 17,
               color: colors.inkFaint,
             ),
+            onSelected: (value) {
+              if (value == 'signout') onSignOut();
+              if (value == 'remove') onRemove();
+            },
+            itemBuilder: (context) => [
+              if (account.isSignedIn)
+                const PopupMenuItem(
+                  value: 'signout',
+                  child: MenuAction(
+                    icon: Icons.logout_rounded,
+                    label: 'Sign out (remember account)',
+                  ),
+                ),
+              const PopupMenuItem(
+                value: 'remove',
+                child: MenuAction(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Forget this account',
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -913,11 +1015,17 @@ class _CloudList extends ConsumerWidget {
                       itemBuilder: (context) => const [
                         PopupMenuItem(
                           value: 'share',
-                          child: Text('Download & share'),
+                          child: MenuAction(
+                            icon: Icons.download_rounded,
+                            label: 'Download & share',
+                          ),
                         ),
                         PopupMenuItem(
                           value: 'delete',
-                          child: Text('Delete from Drive'),
+                          child: MenuAction(
+                            icon: Icons.delete_outline_rounded,
+                            label: 'Delete from Drive',
+                          ),
                         ),
                       ],
                     ),

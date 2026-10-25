@@ -103,8 +103,8 @@ class GoogleDriveAccount {
     if (raw is! Map) return null;
     final id = raw['id']?.toString();
     final email = raw['email']?.toString();
-    final refreshToken = raw['refreshToken']?.toString();
-    if (id == null || email == null || refreshToken == null) return null;
+    final refreshToken = raw['refreshToken']?.toString() ?? '';
+    if (id == null || email == null) return null;
     return GoogleDriveAccount(
       id: id,
       email: email,
@@ -150,6 +150,7 @@ class GoogleDriveConfig {
 
   bool get hasClient => clientId.trim().isNotEmpty;
   bool get hasAccount => accounts.isNotEmpty;
+  bool get hasSignedInAccount => accounts.any((account) => account.isSignedIn);
 
   GoogleDriveAccount? get activeAccount {
     if (accounts.isEmpty) return null;
@@ -373,7 +374,7 @@ p{color:#6d685f;line-height:1.6}</style></head>
         'response_type': 'code',
         'scope': _scopes,
         'access_type': 'offline',
-        'prompt': 'consent',
+        'prompt': 'select_account consent',
         'code_challenge': challenge,
         'code_challenge_method': 'S256',
         'state': state,
@@ -463,6 +464,27 @@ p{color:#6d685f;line-height:1.6}</style></head>
     _tokens.remove(id);
   }
 
+  /// Clears the refresh token but keeps the account row and Drive folder. The
+  /// next sign-in can use the remembered email as a login hint.
+  Future<void> signOutAccount(String id) async {
+    final config = await loadConfig();
+    if (!config.accounts.any((account) => account.id == id)) {
+      throw GoogleDriveException('That Google account is not connected.');
+    }
+    await _save(
+      config.copyWith(
+        accounts: [
+          for (final account in config.accounts)
+            if (account.id == id)
+              account.copyWith(clearRefreshToken: true)
+            else
+              account,
+        ],
+      ),
+    );
+    _tokens.remove(id);
+  }
+
   Future<void> setActiveAccount(String id) async {
     final config = await loadConfig();
     if (!config.accounts.any((account) => account.id == id)) {
@@ -529,6 +551,7 @@ p{color:#6d685f;line-height:1.6}</style></head>
   Future<CloudBackupFile?> autoUploadIfDue() async {
     final config = await loadConfig();
     if (!config.autoUpload || !config.hasAccount) return null;
+    if (config.activeAccount?.isSignedIn != true) return null;
     final last = config.lastUploadAt;
     if (last != null && DateTime.now().difference(last).inHours < 20) {
       return null;
@@ -613,16 +636,22 @@ p{color:#6d685f;line-height:1.6}</style></head>
     if (config.accounts.isEmpty) {
       throw GoogleDriveException('Connect a Google account first.');
     }
+    GoogleDriveAccount? selected;
     if (accountId != null) {
       for (final account in config.accounts) {
-        if (account.id == accountId) return account;
+        if (account.id == accountId) selected = account;
       }
     }
-    final active = config.activeAccount;
-    if (active == null) {
+    selected ??= config.activeAccount;
+    if (selected == null) {
       throw GoogleDriveException('Connect a Google account first.');
     }
-    return active;
+    if (!selected.isSignedIn) {
+      throw GoogleDriveException(
+        '${selected.email} is signed out. Sign in again to use Google Drive.',
+      );
+    }
+    return selected;
   }
 
   void close() => _client.close();
@@ -864,6 +893,11 @@ p{color:#6d685f;line-height:1.6}</style></head>
     GoogleDriveAccount account, {
     bool force = false,
   }) async {
+    if (!account.isSignedIn) {
+      throw GoogleDriveException(
+        '${account.email} is signed out. Sign in again to use Google Drive.',
+      );
+    }
     final cached = _tokens[account.id];
     if (!force &&
         cached != null &&

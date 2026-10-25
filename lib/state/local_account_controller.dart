@@ -7,10 +7,9 @@ import '../data/models/app_settings.dart';
 import '../data/models/local_account.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/services/local_account_store.dart';
-import 'repository_providers.dart';
 
 /// Created by `main()` after the active local ledger has opened. Tests leave
-/// this empty and override [databaseProvider] directly.
+/// this empty and override `databaseProvider` directly.
 class LocalAccountBoot {
   const LocalAccountBoot({
     required this.store,
@@ -78,16 +77,16 @@ class LocalAccountController extends Notifier<LocalAccountState?> {
     final current = state;
     if (current == null) return;
     final account = current.accounts.where((item) => item.id == id).firstOrNull;
-    if (account == null) throw StateError('That local account no longer exists.');
+    if (account == null) {
+      throw StateError('That local account no longer exists.');
+    }
     if (current.active.id == account.id && current.signedIn) return;
 
     AppDatabase? nextDatabase;
     if (current.active.id == account.id) {
       nextDatabase = current.database;
     } else {
-      final candidate = AppDatabase(
-        path: current.store.databasePath(account),
-      );
+      final candidate = AppDatabase(path: current.store.databasePath(account));
       await current.store.ensureDirectory(account);
       await candidate.open();
       nextDatabase = candidate;
@@ -134,9 +133,9 @@ class LocalAccountController extends Notifier<LocalAccountState?> {
     await current.store.ensureDirectory(account);
     final database = AppDatabase(path: current.store.databasePath(account));
     await database.open();
-    await SettingsRepository(database).save(
-      AppSettings.defaults.copyWith(displayName: clean, onboarded: true),
-    );
+    await SettingsRepository(
+      database,
+    ).save(AppSettings.defaults.copyWith(displayName: clean, onboarded: true));
 
     final accounts = [...current.accounts, account];
     await current.store.save(
@@ -153,10 +152,7 @@ class LocalAccountController extends Notifier<LocalAccountState?> {
       database: database,
     );
     unawaited(
-      Future<void>.delayed(
-        const Duration(seconds: 3),
-        current.database.close,
-      ),
+      Future<void>.delayed(const Duration(seconds: 3), current.database.close),
     );
     return account;
   }

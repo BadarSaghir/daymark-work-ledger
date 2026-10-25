@@ -166,6 +166,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Ensure Android API 37 toolchain
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -286,14 +291,23 @@ jobs:
             echo "No macOS app bundle was produced." >&2
             exit 1
           fi
+          if [ -z "$VERSION" ]; then
+            echo "Could not read the app version from pubspec.yaml." >&2
+            exit 1
+          fi
+          rm -rf release dist/dmg
           mkdir -p release dist/dmg
+          xattr -cr "$APP"
           codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" \
             "release/Daymark-${VERSION}-macos-${ARCH}.zip"
-          cp -R "$APP" "dist/dmg/Daymark.app"
+          /usr/bin/ditto "$APP" "dist/dmg/Daymark.app"
           ln -s /Applications "dist/dmg/Applications"
           hdiutil create -volname "Daymark ${VERSION}" -srcfolder dist/dmg \
-            -ov -format UDZO "release/Daymark-${VERSION}-macos-${ARCH}.dmg"
+            -fs HFS+ -format UDZO -ov \
+            "release/Daymark-${VERSION}-macos-${ARCH}.dmg"
+          hdiutil verify "release/Daymark-${VERSION}-macos-${ARCH}.dmg"
           ls -lh release
       - uses: actions/upload-artifact@v4
         with:

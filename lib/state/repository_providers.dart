@@ -115,7 +115,9 @@ final googleDriveBackupsProvider = FutureProvider<List<CloudBackupFile>>((
   ref,
 ) async {
   final config = await ref.watch(googleDriveConfigProvider.future);
-  if (!config.hasAccount) return const [];
+  if (!config.hasAccount || config.activeAccount?.isSignedIn != true) {
+    return const [];
+  }
   final service = await ref.watch(googleDriveServiceProvider.future);
   return service.listBackups(accountId: config.activeAccountId);
 });

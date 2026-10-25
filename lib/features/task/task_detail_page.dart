@@ -11,6 +11,7 @@ import '../../core/ui/feedback.dart';
 import '../../core/ui/form.dart';
 import '../../core/ui/layout.dart';
 import '../../core/ui/markdown.dart';
+import '../../core/ui/menu_action.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
@@ -416,18 +417,16 @@ class _DetailTopBar extends StatelessWidget {
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: 'archive',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.archive_outlined, size: 18),
-                  title: Text('Archive'),
+                child: MenuAction(
+                  icon: Icons.archive_outlined,
+                  label: 'Archive',
                 ),
               ),
               PopupMenuItem(
                 value: 'delete',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded, size: 18),
-                  title: Text('Delete'),
+                child: MenuAction(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete',
                 ),
               ),
             ],
@@ -780,10 +779,28 @@ class _StepRow extends ConsumerWidget {
                   break;
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'up', child: Text('Move up')),
-              const PopupMenuItem(value: 'down', child: Text('Move down')),
-              const PopupMenuItem(value: 'delete', child: Text('Delete step')),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'up',
+                child: MenuAction(
+                  icon: Icons.arrow_upward_rounded,
+                  label: 'Move up',
+                ),
+              ),
+              PopupMenuItem(
+                value: 'down',
+                child: MenuAction(
+                  icon: Icons.arrow_downward_rounded,
+                  label: 'Move down',
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: MenuAction(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete step',
+                ),
+              ),
             ],
           ),
         ],

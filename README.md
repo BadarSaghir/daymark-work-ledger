@@ -4,7 +4,7 @@
 
 Daymark is a private, offline-first work ledger for people whose work is more varied than a task list. Plan the day with honest weight, break large work into steps, time it without ceremony, write in markdown, and keep a record you can actually return to.
 
-No account is required. No telemetry. Your ledger lives in a local SQLite database, and every export is a readable ZIP you own.
+No online account is required. No telemetry. Your ledger lives in a local SQLite database, and every export is a readable ZIP you own. If you share a device, add separate local accounts — each one keeps its own ledger, backups, reminders, and Google Drive link.
 
 [![Build & Release](https://github.com/BadarSaghir/daymark-work-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/BadarSaghir/daymark-work-ledger/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/BadarSaghir/daymark-work-ledger?color=d48a5f)](https://github.com/BadarSaghir/daymark-work-ledger/releases/latest)
@@ -26,6 +26,7 @@ Most tools ask you to choose between a rigid project manager and a blank notes a
 - **Choose your second copy.** Mirror backups into your own Google Drive folder with one-tap Google sign-in in official builds, or use your own OAuth client when self-hosting.
 - **Move between your own devices.** Nearby syncs ledgers, notes, and files directly over the LAN with QR pairing. No relay, no cloud copy.
 - **Remember without a server.** Task starts, deadlines, and a daily closing note are scheduled as offline OS notifications.
+- **Share a device without sharing a ledger.** Local accounts keep separate work, backups, and Google Drive links, with a remembered account picker and a real sign-out gate.
 
 ## Features
 

@@ -307,10 +307,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                       fontSize: 10.5,
                     ),
                   ),
-                  trailing: const Icon(
-                    Icons.unfold_more_rounded,
-                    size: 18,
-                  ),
+                  trailing: const Icon(Icons.unfold_more_rounded, size: 18),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     showLocalAccountSwitcher(context);
