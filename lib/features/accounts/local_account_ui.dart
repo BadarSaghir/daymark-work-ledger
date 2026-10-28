@@ -39,62 +39,64 @@ class LocalAccountGate extends ConsumerWidget {
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.all(AppSpace.xl),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 540),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Center(child: BrandMark(size: 42, showWordmark: true)),
-                  const SizedBox(height: AppSpace.x3),
-                  Text(
-                    'Choose a ledger',
-                    textAlign: TextAlign.center,
-                    style: AppText.displayM.copyWith(color: colors.ink),
-                  ),
-                  const SizedBox(height: AppSpace.sm),
-                  Text(
-                    'Each local account keeps its own tasks, journal, backups, '
-                    'and Google Drive link on this device. Nothing is uploaded '
-                    'unless you connect a Drive account inside that profile.',
-                    textAlign: TextAlign.center,
-                    style: AppText.bodySmall.copyWith(
-                      color: colors.inkMuted,
-                      height: 1.55,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 540),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Center(
+                      child: BrandMark(size: 42, showWordmark: true),
                     ),
-                  ),
-                  const SizedBox(height: AppSpace.xl),
-                  for (final account in local.accounts)
-                    _GateAccountRow(
-                      account: account,
-                      current: account.id == local.active.id,
-                      onOpen: () => _open(context, ref, account.id),
+                    const SizedBox(height: AppSpace.x3),
+                    Text(
+                      'Choose a ledger',
+                      textAlign: TextAlign.center,
+                      style: AppText.displayM.copyWith(color: colors.ink),
                     ),
-                  const SizedBox(height: AppSpace.lg),
-                  OutlinedButton.icon(
-                    onPressed: () => _create(context, ref),
-                    icon: const Icon(Icons.person_add_alt_rounded, size: 18),
-                    label: const Text('New local account'),
-                  ),
-                  const SizedBox(height: AppSpace.md),
-                  Text(
-                    'Local accounts are profiles, not a password lock. Use your '
-                    'operating system account lock if you need security.',
-                    textAlign: TextAlign.center,
-                    style: AppText.bodySmall.copyWith(
-                      color: colors.inkFaint,
-                      fontSize: 10.5,
-                      height: 1.5,
+                    const SizedBox(height: AppSpace.sm),
+                    Text(
+                      'Each local account keeps its own tasks, journal, backups, '
+                      'and Google Drive link on this device. Nothing is uploaded '
+                      'unless you connect a Drive account inside that profile.',
+                      textAlign: TextAlign.center,
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.inkMuted,
+                        height: 1.55,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: AppSpace.xl),
+                    for (final account in local.accounts)
+                      _GateAccountRow(
+                        account: account,
+                        current: account.id == local.active.id,
+                        onOpen: () => _open(context, ref, account.id),
+                      ),
+                    const SizedBox(height: AppSpace.lg),
+                    OutlinedButton.icon(
+                      onPressed: () => _create(context, ref),
+                      icon: const Icon(Icons.person_add_alt_rounded, size: 18),
+                      label: const Text('New local account'),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    Text(
+                      'Local accounts are profiles, not a password lock. Use your '
+                      'operating system account lock if you need security.',
+                      textAlign: TextAlign.center,
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.inkFaint,
+                        fontSize: 10.5,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Future<void> _open(BuildContext context, WidgetRef ref, String id) async {
     try {

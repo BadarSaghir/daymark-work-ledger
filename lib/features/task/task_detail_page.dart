@@ -366,7 +366,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
               child: PageWidth(
                 maxWidth: 1180,
                 child: SingleChildScrollView(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.only(bottom: AppSpace.x6),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

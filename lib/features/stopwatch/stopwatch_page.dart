@@ -15,6 +15,7 @@ import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../core/utils/durations.dart';
+import '../../core/utils/platform.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/task_view.dart';
 import '../../data/models/time_entry.dart';
@@ -71,6 +72,117 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
         .fold<int>(0, (sum, item) => sum + item.durationMs);
     final taskToday = totalToday - generalToday;
     final isWide = MediaQuery.sizeOf(context).width >= 1060;
+    final compact = Layout.isCompact(context);
+    final timerLabel = session?.label ?? 'A quiet clock for deep work';
+    final timerCategory = session?.taskId == null
+        ? null
+        : views
+                  .where((view) => view.task.id == session!.taskId)
+                  .firstOrNull
+                  ?.category
+                  ?.name ??
+              'Task';
+    final timerKind = session == null
+        ? null
+        : session.kind == TimerKind.task
+        ? 'TASK TIMER'
+        : 'GENERAL TIMER';
+
+    Future<void> toggleTimer() async {
+      final current = timer;
+      if (current == null) return;
+      if (current.isRunning) {
+        await ref.read(timerProvider.notifier).pause();
+        _load();
+      } else {
+        await ref.read(timerProvider.notifier).resume();
+      }
+    }
+
+    void showRitual() {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: 'Before you start',
+          subtitle: 'A small ritual for deliberate attention.',
+          icon: Icons.tips_and_updates_outlined,
+          onClose: () => Navigator.of(sheetContext).pop(),
+          child: const _RitualList(),
+        ),
+        maxWidth: 520,
+      );
+    }
+
+    void showTodayLog() {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: 'Today’s log',
+          subtitle:
+              '${_entries.length} '
+              '${_entries.length == 1 ? 'entry' : 'entries'} · '
+              '${formatCompactMs(totalToday)} logged',
+          icon: Icons.history_rounded,
+          onClose: () => Navigator.of(sheetContext).pop(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TodaySummary(
+                totalMs: focusMs > totalToday ? focusMs : totalToday,
+                generalMs: generalToday,
+                taskMs: taskToday,
+                onRefresh: _load,
+                showRefresh: false,
+              ),
+              const SizedBox(height: AppSpace.lg),
+              if (_loading)
+                const LoadingBlock(height: 100)
+              else if (_entries.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.xl),
+                  child: Text(
+                    'No time logged today. Start the clock for one honest '
+                    'block — the log can wait.',
+                    textAlign: TextAlign.center,
+                    style: AppText.bodySmall.copyWith(
+                      color: sheetContext.colors.inkMuted,
+                      fontStyle: FontStyle.italic,
+                      height: 1.5,
+                    ),
+                  ),
+                )
+              else
+                SurfaceCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < _entries.length; index++)
+                        _EntryRow(
+                          entry: _entries[index],
+                          task: _entries[index].taskId == null
+                              ? null
+                              : views
+                                    .where(
+                                      (view) =>
+                                          view.task.id ==
+                                          _entries[index].taskId,
+                                    )
+                                    .firstOrNull,
+                          last: index == _entries.length - 1,
+                          onDelete: () {
+                            Navigator.of(sheetContext).pop();
+                            _deleteEntry(_entries[index]);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        maxWidth: 560,
+      );
+    }
 
     final main = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -87,7 +199,7 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
               icon: const Icon(Icons.edit_calendar_outlined, size: 17),
               label: const Text('Log by hand'),
             ),
-            if (!active && !Layout.isCompact(context))
+            if (!active)
               FilledButton.icon(
                 onPressed: () => _startFocus(),
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
@@ -96,148 +208,18 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
           ],
         ),
         const SizedBox(height: AppSpace.xl),
-        Container(
-          padding: const EdgeInsets.all(AppSpace.xxl),
-          decoration: BoxDecoration(
-            color: active ? colors.ink : colors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.sheet),
-            border: Border.all(color: active ? colors.ink : colors.line),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  LiveDot(
-                    color: active
-                        ? (timer!.isRunning ? colors.accent : colors.gold)
-                        : colors.inkFaint,
-                    size: 7,
-                  ),
-                  const SizedBox(width: 7),
-                  Text(
-                    active
-                        ? (timer!.isRunning ? 'RUNNING' : 'PAUSED')
-                        : 'READY',
-                    style: AppText.label.copyWith(
-                      color: active
-                          ? colors.canvas.withValues(alpha: 0.55)
-                          : colors.inkFaint,
-                      fontSize: 9,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (active)
-                    Text(
-                      session.kind == TimerKind.task
-                          ? 'TASK TIMER'
-                          : 'GENERAL TIMER',
-                      style: AppText.label.copyWith(
-                        color: active
-                            ? colors.canvas.withValues(alpha: 0.45)
-                            : colors.inkFaint,
-                        fontSize: 8.5,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppSpace.md),
-              Text(
-                active ? session.label : 'A quiet clock for deep work',
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.displayS.copyWith(
-                  color: active ? colors.canvas : colors.ink,
-                  fontSize: 23,
-                ),
-              ),
-              if (active && session.taskId != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  views
-                          .where((view) => view.task.id == session.taskId)
-                          .firstOrNull
-                          ?.category
-                          ?.name ??
-                      'Task',
-                  style: AppText.label.copyWith(
-                    color: colors.accent,
-                    fontSize: 8.5,
-                  ),
-                ),
-              ],
-              const SizedBox(height: AppSpace.xl),
-              _TimerDial(
-                elapsed: timer?.elapsed ?? Duration.zero,
-                active: active,
-                running: timer?.isRunning ?? false,
-              ),
-              const SizedBox(height: AppSpace.xl),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: AppSpace.sm,
-                runSpacing: AppSpace.sm,
-                children: [
-                  if (!active)
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colors.accent,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(160, 50),
-                      ),
-                      onPressed: () => _startFocus(),
-                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                      label: const Text('Start focus'),
-                    )
-                  else ...[
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: timer!.isRunning
-                            ? colors.gold
-                            : colors.primary,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(132, 50),
-                      ),
-                      onPressed: () async {
-                        if (timer.isRunning) {
-                          await ref.read(timerProvider.notifier).pause();
-                          _load();
-                        } else {
-                          await ref.read(timerProvider.notifier).resume();
-                        }
-                      },
-                      icon: Icon(
-                        timer.isRunning
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 19,
-                      ),
-                      label: Text(timer.isRunning ? 'Pause' : 'Resume'),
-                    ),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: colors.canvas,
-                        side: BorderSide(
-                          color: colors.canvas.withValues(alpha: 0.25),
-                        ),
-                        minimumSize: const Size(150, 50),
-                      ),
-                      onPressed: _stopFlow,
-                      icon: const Icon(Icons.stop_rounded, size: 19),
-                      label: const Text('Stop & save'),
-                    ),
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: colors.canvas.withValues(alpha: 0.55),
-                      ),
-                      onPressed: _discard,
-                      child: const Text('Discard'),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
+        _FocusTimerCard(
+          active: active,
+          running: timer?.isRunning ?? false,
+          label: timerLabel,
+          category: timerCategory,
+          taskType: timerKind,
+          elapsed: timer?.elapsed ?? Duration.zero,
+          compact: false,
+          onStart: _startFocus,
+          onToggle: toggleTimer,
+          onStop: _stopFlow,
+          onDiscard: _discard,
         ),
         const SizedBox(height: AppSpace.xl),
         _TodaySummary(
@@ -324,45 +306,11 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
                 style: AppText.displayS.copyWith(color: colors.ink),
               ),
               const SizedBox(height: AppSpace.sm),
-              for (final item in const [
-                'Name the one thing you are doing.',
-                'Close the tabs that are not part of it.',
-                'Decide what “done enough” means.',
-                'Start the clock and leave it alone.',
-              ])
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 5),
-                        child: Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: colors.accent,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          item,
-                          style: AppText.bodySmall.copyWith(
-                            color: colors.inkMuted,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              const _RitualList(),
             ],
           ),
         ),
-        if (!Layout.isCompact(context)) ...[
+        if (!Layout.isCompact(context) && AppPlatform.showsKeyboardHints) ...[
           const SizedBox(height: AppSpace.lg),
           SurfaceCard(
             child: Column(
@@ -391,6 +339,111 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
         ],
       ],
     );
+
+    if (compact) {
+      final size = MediaQuery.sizeOf(context);
+      final landscape = size.width > size.height;
+      final todayMs = focusMs > totalToday ? focusMs : totalToday;
+
+      if (landscape) {
+        // Landscape phones have very little vertical room once the app bar and
+        // bottom nav are accounted for. Lay the clock out sideways and keep the
+        // log behind an icon so nothing needs to scroll.
+        return PageWidth(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg,
+            AppSpace.sm,
+            AppSpace.lg,
+            AppSpace.x3,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    child: _FocusTimerCard(
+                      active: active,
+                      running: timer?.isRunning ?? false,
+                      label: timerLabel,
+                      category: timerCategory,
+                      taskType: timerKind,
+                      elapsed: timer?.elapsed ?? Duration.zero,
+                      compact: true,
+                      landscape: true,
+                      dialSize: 168,
+                      onStart: _startFocus,
+                      onToggle: toggleTimer,
+                      onStop: _stopFlow,
+                      onDiscard: _discard,
+                      onManual: _showManualEntry,
+                      onRitual: showRitual,
+                      onLog: showTodayLog,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      }
+
+      return PageWidth(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg,
+          AppSpace.sm,
+          AppSpace.lg,
+          AppSpace.x4,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CompactFocusTopBar(
+                  active: active,
+                  running: timer?.isRunning ?? false,
+                  onManual: _showManualEntry,
+                  onRitual: showRitual,
+                ),
+                const SizedBox(height: AppSpace.md),
+                Expanded(
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: _FocusTimerCard(
+                          active: active,
+                          running: timer?.isRunning ?? false,
+                          label: timerLabel,
+                          category: timerCategory,
+                          taskType: timerKind,
+                          elapsed: timer?.elapsed ?? Duration.zero,
+                          compact: true,
+                          dialSize: 240,
+                          onStart: _startFocus,
+                          onToggle: toggleTimer,
+                          onStop: _stopFlow,
+                          onDiscard: _discard,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpace.md),
+                _CompactTodayRow(
+                  totalMs: todayMs,
+                  count: _entries.length,
+                  onTap: showTodayLog,
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
 
     return PageWidth(
       child: SingleChildScrollView(
@@ -502,23 +555,501 @@ class _StopwatchPageState extends ConsumerState<StopwatchPage> {
   }
 }
 
+class _FocusTimerCard extends StatelessWidget {
+  const _FocusTimerCard({
+    required this.active,
+    required this.running,
+    required this.label,
+    required this.elapsed,
+    required this.compact,
+    required this.onStart,
+    required this.onToggle,
+    required this.onStop,
+    required this.onDiscard,
+    this.category,
+    this.taskType,
+    this.dialSize = 300,
+    this.landscape = false,
+    this.onManual,
+    this.onRitual,
+    this.onLog,
+  });
+
+  final bool active;
+  final bool running;
+  final String label;
+  final String? category;
+  final String? taskType;
+  final Duration elapsed;
+  final bool compact;
+
+  /// Lays the clock out sideways for short, wide phone screens.
+  final bool landscape;
+  final double dialSize;
+  final VoidCallback onStart;
+  final Future<void> Function() onToggle;
+  final VoidCallback onStop;
+  final VoidCallback onDiscard;
+  final VoidCallback? onManual;
+  final VoidCallback? onRitual;
+  final VoidCallback? onLog;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final foreground = active ? colors.canvas : colors.ink;
+    final faint = active
+        ? colors.canvas.withValues(alpha: 0.55)
+        : colors.inkFaint;
+
+    if (landscape) {
+      return Container(
+        padding: const EdgeInsets.all(AppSpace.lg),
+        decoration: _cardDecoration(colors),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _TimerDial(
+              elapsed: elapsed,
+              active: active,
+              running: running,
+              size: dialSize,
+            ),
+            const SizedBox(width: AppSpace.xl),
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _statusLine(colors, faint),
+                  const SizedBox(height: AppSpace.xs),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.displayS.copyWith(
+                      color: foreground,
+                      fontSize: 19,
+                    ),
+                  ),
+                  if (active && category != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      category!,
+                      style: AppText.label.copyWith(
+                        color: colors.accent,
+                        fontSize: 8.5,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: AppSpace.md),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (onLog != null)
+                        IconButton.filledTonal(
+                          tooltip: 'Today’s log',
+                          onPressed: onLog,
+                          icon: const Icon(Icons.history_rounded, size: 18),
+                        ),
+                      if (onManual != null) ...[
+                        const SizedBox(width: AppSpace.sm),
+                        IconButton.filledTonal(
+                          tooltip: 'Log time by hand',
+                          onPressed: onManual,
+                          icon: const Icon(
+                            Icons.edit_calendar_outlined,
+                            size: 18,
+                          ),
+                        ),
+                      ],
+                      if (onRitual != null) ...[
+                        const SizedBox(width: AppSpace.sm),
+                        IconButton.filledTonal(
+                          tooltip: 'Before you start',
+                          onPressed: onRitual,
+                          icon: const Icon(
+                            Icons.tips_and_updates_outlined,
+                            size: 18,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  SizedBox(width: 292, child: _compactActions(colors)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.all(compact ? AppSpace.lg : AppSpace.xxl),
+      decoration: _cardDecoration(colors),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              LiveDot(
+                color: active
+                    ? (running ? colors.accent : colors.gold)
+                    : colors.inkFaint,
+                size: 7,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                active ? (running ? 'RUNNING' : 'PAUSED') : 'READY',
+                style: AppText.label.copyWith(color: faint, fontSize: 9),
+              ),
+              const Spacer(),
+              if (taskType != null)
+                Text(
+                  taskType!,
+                  style: AppText.label.copyWith(
+                    color: active
+                        ? colors.canvas.withValues(alpha: 0.45)
+                        : colors.inkFaint,
+                    fontSize: 8.5,
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: compact ? AppSpace.sm : AppSpace.md),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.displayS.copyWith(
+              color: foreground,
+              fontSize: compact ? 20 : 23,
+            ),
+          ),
+          if (active && category != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              category!,
+              style: AppText.label.copyWith(
+                color: colors.accent,
+                fontSize: 8.5,
+              ),
+            ),
+          ],
+          SizedBox(height: compact ? AppSpace.md : AppSpace.xl),
+          _TimerDial(
+            elapsed: elapsed,
+            active: active,
+            running: running,
+            size: dialSize,
+          ),
+          SizedBox(height: compact ? AppSpace.md : AppSpace.xl),
+          if (compact)
+            _compactActions(colors)
+          else if (!active)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.accent,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(160, 50),
+              ),
+              onPressed: onStart,
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+              label: const Text('Start focus'),
+            )
+          else
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
+              children: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: running ? colors.gold : colors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(132, 50),
+                  ),
+                  onPressed: () => onToggle(),
+                  icon: Icon(
+                    running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: 19,
+                  ),
+                  label: Text(running ? 'Pause' : 'Resume'),
+                ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.canvas,
+                    side: BorderSide(
+                      color: colors.canvas.withValues(alpha: 0.25),
+                    ),
+                    minimumSize: const Size(150, 50),
+                  ),
+                  onPressed: onStop,
+                  icon: const Icon(Icons.stop_rounded, size: 19),
+                  label: const Text('Stop & save'),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.canvas.withValues(alpha: 0.55),
+                  ),
+                  onPressed: onDiscard,
+                  child: const Text('Discard'),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration(AppColors colors) => BoxDecoration(
+    color: active ? colors.ink : colors.surface,
+    borderRadius: BorderRadius.circular(AppRadius.sheet),
+    border: Border.all(color: active ? colors.ink : colors.line),
+  );
+
+  Widget _statusLine(AppColors colors, Color faint) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        LiveDot(
+          color: active
+              ? (running ? colors.accent : colors.gold)
+              : colors.inkFaint,
+          size: 7,
+        ),
+        const SizedBox(width: 7),
+        Text(
+          active ? (running ? 'RUNNING' : 'PAUSED') : 'READY',
+          style: AppText.label.copyWith(color: faint, fontSize: 9),
+        ),
+        if (taskType != null) ...[
+          const SizedBox(width: AppSpace.sm),
+          Text(
+            '· $taskType',
+            style: AppText.label.copyWith(
+              color: faint.withValues(alpha: 0.8),
+              fontSize: 8.5,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _compactActions(AppColors colors) {
+    if (!active) {
+      return FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: colors.accent,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(0, 48),
+        ),
+        onPressed: onStart,
+        icon: const Icon(Icons.play_arrow_rounded, size: 20),
+        label: const Text('Start focus'),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: running ? colors.gold : colors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 46),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onPressed: () => onToggle(),
+            icon: Icon(
+              running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              size: 19,
+            ),
+            label: Text(running ? 'Pause' : 'Resume'),
+          ),
+        ),
+        const SizedBox(width: AppSpace.sm),
+        Expanded(
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: colors.canvas,
+              side: BorderSide(color: colors.canvas.withValues(alpha: 0.25)),
+              minimumSize: const Size(0, 46),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onPressed: onStop,
+            icon: const Icon(Icons.stop_rounded, size: 19),
+            label: const Text('Stop'),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Discard',
+          onPressed: onDiscard,
+          color: colors.canvas.withValues(alpha: 0.55),
+          icon: const Icon(Icons.delete_outline_rounded, size: 19),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactFocusTopBar extends StatelessWidget {
+  const _CompactFocusTopBar({
+    required this.active,
+    required this.running,
+    required this.onManual,
+    required this.onRitual,
+  });
+
+  final bool active;
+  final bool running;
+  final VoidCallback onManual;
+  final VoidCallback onRitual;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Row(
+      children: [
+        LiveDot(
+          color: active
+              ? (running ? colors.accent : colors.gold)
+              : colors.inkFaint,
+          size: 7,
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                active ? (running ? 'IN SESSION' : 'PAUSED') : 'READY TO FOCUS',
+                style: AppText.label.copyWith(
+                  color: active ? colors.accent : colors.inkFaint,
+                  fontSize: 9,
+                ),
+              ),
+              Text(
+                active
+                    ? 'The clock is keeping this block.'
+                    : 'One clock, one intention.',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.bodySmall.copyWith(
+                  color: colors.inkFaint,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton.filledTonal(
+          tooltip: 'Log time by hand',
+          onPressed: onManual,
+          icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+        ),
+        const SizedBox(width: 4),
+        IconButton.filledTonal(
+          tooltip: 'Before you start',
+          onPressed: onRitual,
+          icon: const Icon(Icons.tips_and_updates_outlined, size: 18),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactTodayRow extends StatelessWidget {
+  const _CompactTodayRow({
+    required this.totalMs,
+    required this.count,
+    required this.onTap,
+  });
+
+  final int totalMs;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm,
+      ),
+      onTap: onTap,
+      semanticLabel: 'Open today’s log',
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: colors.primarySoft,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.history_rounded, size: 18, color: colors.primary),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Today’s log',
+                  style: AppText.titleM.copyWith(
+                    color: colors.ink,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  count == 0
+                      ? 'No time logged yet'
+                      : '${formatCompactMs(totalMs)} · $count '
+                            '${count == 1 ? 'entry' : 'entries'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: colors.inkFaint),
+        ],
+      ),
+    );
+  }
+}
+
 class _TimerDial extends StatelessWidget {
   const _TimerDial({
     required this.elapsed,
     required this.active,
     required this.running,
+    this.size = 300,
   });
 
   final Duration elapsed;
   final bool active;
   final bool running;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     return SizedBox(
-      width: 300,
-      height: 300,
+      width: size,
+      height: size,
       child: CustomPaint(
         painter: _DialPainter(
           color: running ? colors.accent : colors.inkFaint,
@@ -620,12 +1151,14 @@ class _TodaySummary extends StatelessWidget {
     required this.generalMs,
     required this.taskMs,
     required this.onRefresh,
+    this.showRefresh = true,
   });
 
   final int totalMs;
   final int generalMs;
   final int taskMs;
   final VoidCallback onRefresh;
+  final bool showRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -662,11 +1195,12 @@ class _TodaySummary extends StatelessWidget {
               color: colors.accent,
             ),
           ),
-          IconButton(
-            tooltip: 'Refresh log',
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-          ),
+          if (showRefresh)
+            IconButton(
+              tooltip: 'Refresh log',
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+            ),
         ],
       ),
     );
@@ -1173,6 +1707,57 @@ class _ManualEntrySheetState extends ConsumerState<_ManualEntrySheet> {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _RitualList extends StatelessWidget {
+  const _RitualList();
+
+  static const _items = [
+    'Name the one thing you are doing.',
+    'Close the tabs that are not part of it.',
+    'Decide what “done enough” means.',
+    'Start the clock and leave it alone.',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in _items)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.accent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    item,
+                    style: AppText.bodySmall.copyWith(
+                      color: colors.inkMuted,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

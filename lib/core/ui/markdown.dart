@@ -354,11 +354,7 @@ class _ToolButton extends StatelessWidget {
         child: SizedBox(
           width: compact ? 40 : 32,
           height: compact ? 40 : 32,
-          child: Icon(
-            icon,
-            size: compact ? 19 : 17,
-            color: colors.inkMuted,
-          ),
+          child: Icon(icon, size: compact ? 19 : 17, color: colors.inkMuted),
         ),
       ),
     );

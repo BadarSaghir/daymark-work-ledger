@@ -34,6 +34,7 @@ class InsightsPage extends ConsumerWidget {
     final heat = heatAsync.value ?? const <String, int>{};
     final categoryById = {for (final c in categories) c.id: c};
     final wide = MediaQuery.sizeOf(context).width >= 1050;
+    final compact = Layout.isCompact(context);
 
     final header = PageHeader(
       eyebrow: 'The honest mirror',
@@ -341,6 +342,70 @@ class InsightsPage extends ConsumerWidget {
             ),
     );
 
+    if (compact) {
+      return PageWidth(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.only(bottom: AppSpace.x6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              header,
+              const SizedBox(height: AppSpace.lg),
+              kpis,
+              const SizedBox(height: AppSpace.lg),
+              _CompactInsightTabs(
+                tabs: [
+                  (
+                    label: 'Pulse',
+                    icon: Icons.auto_graph_rounded,
+                    child: Column(
+                      children: [
+                        focusPanel,
+                        const SizedBox(height: AppSpace.lg),
+                        rhythmPanel,
+                      ],
+                    ),
+                  ),
+                  (
+                    label: 'Time',
+                    icon: Icons.donut_small_rounded,
+                    child: Column(
+                      children: [
+                        categoryPanel,
+                        const SizedBox(height: AppSpace.lg),
+                        estimatePanel,
+                      ],
+                    ),
+                  ),
+                  (
+                    label: 'History',
+                    icon: Icons.grid_on_rounded,
+                    child: Column(
+                      children: [
+                        heatPanel,
+                        const SizedBox(height: AppSpace.lg),
+                        completedPanel,
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpace.lg),
+              Text(
+                'Insights are computed from your local records. The longer you '
+                'keep the ledger, the more honest the mirror becomes.',
+                style: AppText.bodySmall.copyWith(
+                  color: colors.inkFaint,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return PageWidth(
       child: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -404,6 +469,113 @@ class InsightsPage extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// On phones the insight panels become three calm tabs instead of a seven-card
+/// feed. The KPI row stays visible as the shared headline.
+class _CompactInsightTabs extends StatefulWidget {
+  const _CompactInsightTabs({required this.tabs});
+
+  final List<({String label, IconData icon, Widget child})> tabs;
+
+  @override
+  State<_CompactInsightTabs> createState() => _CompactInsightTabsState();
+}
+
+class _CompactInsightTabsState extends State<_CompactInsightTabs> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: colors.surfaceSunken,
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            border: Border.all(color: colors.line),
+          ),
+          child: Row(
+            children: [
+              for (var index = 0; index < widget.tabs.length; index++)
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    selected: _index == index,
+                    label: widget.tabs[index].label,
+                    child: InkWell(
+                      onTap: () => setState(() => _index = index),
+                      borderRadius: BorderRadius.circular(AppRadius.input),
+                      child: AnimatedContainer(
+                        duration: AppDurations.fast,
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(
+                          color: _index == index
+                              ? colors.surface
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(AppRadius.input),
+                          boxShadow: _index == index
+                              ? [
+                                  BoxShadow(
+                                    color: colors.shadow.withValues(
+                                      alpha: 0.06,
+                                    ),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              widget.tabs[index].icon,
+                              size: 15,
+                              color: _index == index
+                                  ? colors.primary
+                                  : colors.inkMuted,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                widget.tabs[index].label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.bodySmall.copyWith(
+                                  color: _index == index
+                                      ? colors.primary
+                                      : colors.inkMuted,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpace.lg),
+        AnimatedSwitcher(
+          duration: AppDurations.base,
+          switchInCurve: Curves.easeOutCubic,
+          child: KeyedSubtree(
+            key: ValueKey(_index),
+            child: widget.tabs[_index].child,
+          ),
+        ),
+      ],
     );
   }
 }

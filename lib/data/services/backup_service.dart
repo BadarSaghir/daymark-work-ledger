@@ -79,7 +79,7 @@ class BackupService {
 
   static const format = 'daymark.backup';
   static const formatVersion = 1;
-  static const appVersion = '1.3.0';
+  static const appVersion = '1.4.0';
   static const maxImportBytes = 100 * 1024 * 1024;
 
   static const _tables = <String>[

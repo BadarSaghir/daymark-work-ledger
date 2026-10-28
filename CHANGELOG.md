@@ -4,6 +4,46 @@ All notable changes to Daymark are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 semantic versioning once it reaches a public release.
 
+## [1.4.0] - 2026-10-28
+
+### Added
+
+- Mobile-first app shell for phones: a compact header with the current screen's
+  title and subtitle, four-item bottom navigation (Today, Planner, Focus, More),
+  a centre-docked capture button, and a floating running-timer pill that opens
+  Focus.
+- A Focus screen that fits a phone without scrolling: responsive clock dial,
+  single-row Pause, Stop, and Discard controls, and a tappable **Today's log**
+  summary that opens totals and entries in a sheet. Landscape phones get a
+  sideways clock with icon actions for the log, manual entry, and the ritual.
+- Phone layouts for Today, Planner, Calendar, Journal, Insights, and Settings
+  that keep the primary action on screen and move history, detail, and totals
+  into bottom sheets and compact summary rows.
+- A grouped settings menu on phones with section sheets for profile, daily
+  rhythm, appearance, backup, and data. Each sheet panel owns its state, so
+  toggles and fields stay live while the sheet is open.
+- Platform capability helpers (`AppPlatform`) so keyboard shortcuts and
+  desktop-only copy appear only on desktop.
+
+### Changed
+
+- Bottom sheets on compact screens now size themselves between the notch and
+  the open keyboard, scroll inside the remaining space, and keep their last row
+  above the home indicator.
+- The timer pill is hidden on Focus, where it overlapped the clock, and sits
+  above the bottom navigation on the other screens.
+- Compact page padding was reduced so content clears the navigation bar and
+  capture button without a large dead zone.
+- Version is now `1.4.0+5`.
+
+### Fixed
+
+- Bottom sheet menu items could not be reached beneath the home indicator on
+  notched phones.
+- The Focus screen scrolled on phones and clipped its controls on small and
+  landscape screens.
+- Keyboard shortcuts were advertised on touch devices where no keyboard exists.
+
 ## [1.3.0] - 2026-10-25
 
 ### Added

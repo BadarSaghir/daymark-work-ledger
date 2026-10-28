@@ -26,7 +26,7 @@ class Layout {
         AppSpace.lg,
         AppSpace.sm,
         AppSpace.lg,
-        AppSpace.x6,
+        64,
       );
     }
     if (width < AppBreakpoints.expanded) {

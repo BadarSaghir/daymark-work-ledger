@@ -10,6 +10,7 @@ import '../../core/theme/app_typography.dart';
 import '../../core/ui/enum_ui.dart';
 import '../../core/ui/feedback.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../core/utils/durations.dart';
@@ -82,6 +83,7 @@ class TodayPage extends ConsumerWidget {
     final completedCount = plannedToday.where((view) => view.isDone).length;
 
     final isWide = MediaQuery.sizeOf(context).width >= 1080;
+    final compact = Layout.isCompact(context);
 
     final main = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -231,6 +233,276 @@ class TodayPage extends ConsumerWidget {
         ),
       ],
     );
+
+    void showDayShape() {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: 'The shape of today',
+          subtitle: 'Weight, attention, and the loops you closed.',
+          icon: Icons.insights_rounded,
+          onClose: () => Navigator.of(sheetContext).pop(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DayShapeCard(
+                plannedPoints: plannedPoints,
+                earnedPoints: earnedPoints,
+                targetPoints: target,
+                focusMs: focusMs,
+                focusTargetMinutes: focusTarget,
+                doneCount: completedCount,
+                plannedCount: plannedToday.length,
+              ),
+              const SizedBox(height: AppSpace.lg),
+              Text(
+                'Points blend size, priority, kind, and category. The ring is '
+                'earned against your daily target — a compass, not a quota.',
+                style: AppText.bodySmall.copyWith(
+                  color: context.colors.inkMuted,
+                  height: 1.55,
+                ),
+              ),
+            ],
+          ),
+        ),
+        maxWidth: 560,
+      );
+    }
+
+    void showTaskList({
+      required String title,
+      required String subtitle,
+      required List<TaskView> items,
+      required String emptyMessage,
+      IconData? icon,
+    }) {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: title,
+          subtitle: subtitle,
+          icon: icon,
+          onClose: () => Navigator.of(sheetContext).pop(),
+          child: items.isEmpty
+              ? Text(
+                  emptyMessage,
+                  style: AppText.bodySmall.copyWith(
+                    color: sheetContext.colors.inkMuted,
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final view in items) ...[
+                      TaskCard(
+                        view: view,
+                        compact: true,
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          openTaskDetail(context, view.task.id);
+                        },
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                    ],
+                  ],
+                ),
+        ),
+        maxWidth: 560,
+      );
+    }
+
+    void showInbox() {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: 'Inbox',
+          subtitle: inbox.isEmpty
+              ? 'Nothing loose. The ledger is tidy.'
+              : '${inbox.length} ${inbox.length == 1 ? 'piece' : 'pieces'} of work without a day yet.',
+          icon: Icons.inbox_outlined,
+          onClose: () => Navigator.of(sheetContext).pop(),
+          footer: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    showQuickCapture(context);
+                  },
+                  icon: const Icon(Icons.add_rounded, size: 17),
+                  label: const Text('Capture'),
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    ref.read(navIndexProvider.notifier).state =
+                        NavTarget.planner;
+                  },
+                  icon: const Icon(Icons.view_week_outlined, size: 17),
+                  label: const Text('Open planner'),
+                ),
+              ),
+            ],
+          ),
+          child: inbox.isEmpty
+              ? Text(
+                  'Capture a thought now; give it a day when it has a shape.',
+                  style: AppText.bodySmall.copyWith(
+                    color: sheetContext.colors.inkMuted,
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final view in inbox) ...[
+                      TaskCard(
+                        view: view,
+                        compact: true,
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          openTaskDetail(context, view.task.id);
+                        },
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                    ],
+                  ],
+                ),
+        ),
+        maxWidth: 560,
+      );
+    }
+
+    if (compact) {
+      final journalExcerpt = (journal?.bodyMd ?? '')
+          .replaceAll(RegExp(r'[#>*_`\-]'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      return PageWidth(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          padding: const EdgeInsets.only(bottom: AppSpace.sm),
+          child: tasksAsync.isLoading && views.isEmpty
+              ? const Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [SizedBox(height: 40), LoadingBlock(height: 320)],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _MobileGreeting(
+                      name: _firstName(settings?.displayName),
+                      today: today,
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    _MobilePulseCard(
+                      earnedPoints: earnedPoints,
+                      plannedPoints: plannedPoints,
+                      targetPoints: target,
+                      focusMs: focusMs,
+                      doneCount: completedCount,
+                      openCount: plannedToday.where((v) => !v.isDone).length,
+                      onTap: showDayShape,
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    _FocusPanel(
+                      settingsName: _firstName(settings?.displayName),
+                      onOpenFocus: () {
+                        ref.read(navIndexProvider.notifier).state =
+                            NavTarget.focus;
+                      },
+                      compact: true,
+                    ),
+                    if (overdue.isNotEmpty) ...[
+                      const SizedBox(height: AppSpace.md),
+                      _MobileReviewRow(
+                        icon: Icons.warning_amber_rounded,
+                        tone: context.colors.rose,
+                        title: overdue.length == 1
+                            ? 'One task is slipping'
+                            : '${overdue.length} tasks are slipping',
+                        subtitle: overdue.length == 1
+                            ? overdue.first.task.title
+                            : 'Open the overdue list',
+                        onTap: () => showTaskList(
+                          title: 'Overdue',
+                          subtitle: 'Work whose due date has passed.',
+                          items: overdue,
+                          emptyMessage: 'Nothing is overdue.',
+                          icon: Icons.warning_amber_rounded,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpace.xl),
+                    _SectionHeading(
+                      eyebrow: 'Agenda',
+                      title: "Today's plan",
+                      trailing: TextButton.icon(
+                        onPressed: () =>
+                            showQuickCapture(context, plannedDate: today),
+                        icon: const Icon(Icons.add_rounded, size: 16),
+                        label: const Text('Add'),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    if (openTasks.isEmpty)
+                      EmptyState(
+                        compact: true,
+                        icon: Icons.wb_sunny_outlined,
+                        title: 'The day is open',
+                        message:
+                            'Nothing is planned yet. Capture one honest piece '
+                            'of work and give it a time, or leave room for what '
+                            'arrives.',
+                        action: FilledButton.icon(
+                          onPressed: () =>
+                              showQuickCapture(context, plannedDate: today),
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: const Text('Plan one thing'),
+                        ),
+                      )
+                    else
+                      _Timeline(tasks: openTasks),
+                    if (doneTasks.isNotEmpty) ...[
+                      const SizedBox(height: AppSpace.lg),
+                      _MobileReviewRow(
+                        icon: Icons.check_circle_outline_rounded,
+                        tone: context.colors.green,
+                        title: 'Completed today',
+                        subtitle:
+                            '${doneTasks.length} ${doneTasks.length == 1 ? 'loop closed' : 'loops closed'}',
+                        onTap: () => showTaskList(
+                          title: 'Completed today',
+                          subtitle: 'The loops you closed. Well held.',
+                          items: doneTasks,
+                          emptyMessage: 'Nothing completed yet.',
+                          icon: Icons.check_circle_outline_rounded,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpace.xl),
+                    _MobileUtilityRow(
+                      journalExcerpt: journalExcerpt,
+                      streak: streak,
+                      inboxCount: inbox.length,
+                      onJournal: () {
+                        ref.read(selectedDateProvider.notifier).state = today;
+                        ref.read(navIndexProvider.notifier).state =
+                            NavTarget.journal;
+                      },
+                      onInbox: showInbox,
+                    ),
+                  ],
+                ),
+        ),
+      );
+    }
 
     return PageWidth(
       child: SingleChildScrollView(
@@ -506,10 +778,15 @@ class _Metric extends StatelessWidget {
 }
 
 class _FocusPanel extends ConsumerWidget {
-  const _FocusPanel({required this.settingsName, required this.onOpenFocus});
+  const _FocusPanel({
+    required this.settingsName,
+    required this.onOpenFocus,
+    this.compact = false,
+  });
 
   final String settingsName;
   final VoidCallback onOpenFocus;
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -518,118 +795,140 @@ class _FocusPanel extends ConsumerWidget {
     final session = timer?.session;
     final active = session != null;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpace.xl),
-      decoration: BoxDecoration(
-        color: active ? colors.ink : colors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: active ? colors.ink : colors.line),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: active
-                  ? colors.canvas.withValues(alpha: 0.08)
-                  : colors.accentSoft,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              active
-                  ? (timer!.isRunning
-                        ? Icons.graphic_eq_rounded
-                        : Icons.pause_rounded)
-                  : Icons.timer_outlined,
-              color: active ? colors.canvas : colors.accent,
-              size: 22,
-            ),
+    return Material(
+      color: active ? colors.ink : colors.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpenFocus,
+        child: Container(
+          padding: EdgeInsets.all(compact ? AppSpace.lg : AppSpace.xl),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: active ? colors.ink : colors.line),
           ),
-          const SizedBox(width: AppSpace.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          child: Row(
+            children: [
+              Container(
+                width: compact ? 42 : 46,
+                height: compact ? 42 : 46,
+                decoration: BoxDecoration(
+                  color: active
+                      ? colors.canvas.withValues(alpha: 0.08)
+                      : colors.accentSoft,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
                   active
-                      ? (timer!.isRunning ? 'In focus' : 'Focus paused')
-                      : 'The focus room',
-                  style: AppText.label.copyWith(
-                    color: active
-                        ? colors.canvas.withValues(alpha: 0.55)
-                        : colors.inkFaint,
+                      ? (timer!.isRunning
+                            ? Icons.graphic_eq_rounded
+                            : Icons.pause_rounded)
+                      : Icons.timer_outlined,
+                  color: active ? colors.canvas : colors.accent,
+                  size: compact ? 20 : 22,
+                ),
+              ),
+              SizedBox(width: compact ? AppSpace.md : AppSpace.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      active
+                          ? (timer!.isRunning ? 'In focus' : 'Focus paused')
+                          : 'The focus room',
+                      style: AppText.label.copyWith(
+                        color: active
+                            ? colors.canvas.withValues(alpha: 0.55)
+                            : colors.inkFaint,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (active) ...[
+                      Text(
+                        session.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.titleM.copyWith(color: colors.canvas),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        formatStopwatch(timer?.elapsed ?? Duration.zero),
+                        style: AppText.monoData.copyWith(
+                          color: colors.accent,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ] else
+                      Text(
+                        'Settle into one thing, $settingsName.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.titleM.copyWith(color: colors.ink),
+                      ),
+                  ],
+                ),
+              ),
+              if (active) ...[
+                IconButton(
+                  tooltip: timer!.isRunning ? 'Pause' : 'Resume',
+                  onPressed: () {
+                    if (timer.isRunning) {
+                      ref.read(timerProvider.notifier).pause();
+                    } else {
+                      ref.read(timerProvider.notifier).resume();
+                    }
+                  },
+                  icon: Icon(
+                    timer.isRunning
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    color: colors.canvas,
                   ),
                 ),
-                const SizedBox(height: 4),
-                if (active) ...[
-                  Text(
-                    session.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.titleM.copyWith(color: colors.canvas),
+                IconButton(
+                  tooltip: 'Stop and save',
+                  onPressed: () => confirmStopTimer(context, ref),
+                  icon: Icon(Icons.stop_rounded, color: colors.canvas),
+                ),
+              ] else
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: Colors.white,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    formatStopwatch(timer?.elapsed ?? Duration.zero),
-                    style: AppText.monoData.copyWith(
-                      color: colors.accent,
-                      fontSize: 15,
-                    ),
+                  onPressed: () => showStartFocusDialog(context, ref),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Start'),
+                ),
+              if (compact)
+                Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: active
+                        ? colors.canvas.withValues(alpha: 0.6)
+                        : colors.inkFaint,
                   ),
-                ] else
-                  Text(
-                    'Settle into one thing, $settingsName.',
-                    style: AppText.titleM.copyWith(color: colors.ink),
+                )
+              else ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Open focus room',
+                  onPressed: onOpenFocus,
+                  icon: Icon(
+                    Icons.arrow_forward_rounded,
+                    color: active
+                        ? colors.canvas.withValues(alpha: 0.6)
+                        : colors.inkFaint,
+                    size: 18,
                   ),
+                ),
               ],
-            ),
+            ],
           ),
-          if (active) ...[
-            IconButton(
-              tooltip: timer!.isRunning ? 'Pause' : 'Resume',
-              onPressed: () {
-                if (timer.isRunning) {
-                  ref.read(timerProvider.notifier).pause();
-                } else {
-                  ref.read(timerProvider.notifier).resume();
-                }
-              },
-              icon: Icon(
-                timer.isRunning
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
-                color: colors.canvas,
-              ),
-            ),
-            IconButton(
-              tooltip: 'Stop and save',
-              onPressed: () => confirmStopTimer(context, ref),
-              icon: Icon(Icons.stop_rounded, color: colors.canvas),
-            ),
-          ] else
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: colors.accent,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => showStartFocusDialog(context, ref),
-              icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: const Text('Start'),
-            ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Open focus room',
-            onPressed: onOpenFocus,
-            icon: Icon(
-              Icons.arrow_forward_rounded,
-              color: active
-                  ? colors.canvas.withValues(alpha: 0.6)
-                  : colors.inkFaint,
-              size: 18,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -643,6 +942,9 @@ class _Timeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final compact = Layout.isCompact(context);
+    final timeWidth = compact ? 42.0 : 54.0;
+    final gutter = compact ? AppSpace.sm : AppSpace.md;
     return Column(
       children: [
         for (var index = 0; index < tasks.length; index++)
@@ -651,7 +953,7 @@ class _Timeline extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  width: 54,
+                  width: timeWidth,
                   child: Padding(
                     padding: const EdgeInsets.only(top: 15),
                     child: Text(
@@ -666,9 +968,9 @@ class _Timeline extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: AppSpace.md),
+                SizedBox(width: gutter),
                 SizedBox(
-                  width: 14,
+                  width: compact ? 10 : 14,
                   child: Column(
                     children: [
                       const SizedBox(height: 18),
@@ -693,12 +995,13 @@ class _Timeline extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: AppSpace.md),
+                SizedBox(width: gutter),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                    padding: EdgeInsets.only(bottom: compact ? 6 : AppSpace.sm),
                     child: TaskCard(
                       view: tasks[index],
+                      compact: compact,
                       onTap: () =>
                           openTaskDetail(context, tasks[index].task.id),
                     ),
@@ -1038,7 +1341,6 @@ class _InboxCard extends StatelessWidget {
 
   final List<TaskView> inbox;
   final VoidCallback onOpenAll;
-
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -1123,6 +1425,371 @@ class _InboxCard extends StatelessWidget {
                   child: const Text('Open planner'),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact greeting that gives the phone home screen a human opening without
+/// pushing the actual day below the fold.
+class _MobileGreeting extends StatelessWidget {
+  const _MobileGreeting({required this.name, required this.today});
+
+  final String name;
+  final DateTime today;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${greetingForHour(DateTime.now().hour)},',
+          style: AppText.bodySmall.copyWith(
+            color: colors.inkMuted,
+            fontSize: 12.5,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          '$name.',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.displayM.copyWith(
+            color: colors.ink,
+            fontSize: 28,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          longDateLabel(today),
+          style: AppText.bodySmall.copyWith(
+            color: colors.inkFaint,
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One hero card replaces the desktop pulse strip and day-shape rail on
+/// phones. Details live one tap away instead of another screen of scroll.
+class _MobilePulseCard extends StatelessWidget {
+  const _MobilePulseCard({
+    required this.earnedPoints,
+    required this.plannedPoints,
+    required this.targetPoints,
+    required this.focusMs,
+    required this.doneCount,
+    required this.openCount,
+    required this.onTap,
+  });
+
+  final double earnedPoints;
+  final double plannedPoints;
+  final double targetPoints;
+  final int focusMs;
+  final int doneCount;
+  final int openCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final ratio = targetPoints <= 0 ? 0.0 : earnedPoints / targetPoints;
+    return SurfaceCard(
+      padding: const EdgeInsets.all(AppSpace.lg),
+      onTap: onTap,
+      semanticLabel: 'Open the shape of today',
+      child: Row(
+        children: [
+          SizedBox(
+            width: 62,
+            height: 62,
+            child: CustomPaint(
+              painter: _RingPainter(
+                progress: ratio.clamp(0.0, 1.0),
+                color: colors.primary,
+                track: colors.surfaceSunken,
+              ),
+              child: Center(
+                child: Text(
+                  '${(ratio * 100).round()}%',
+                  style: AppText.monoData.copyWith(
+                    color: colors.primary,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "TODAY'S PULSE",
+                  style: AppText.label.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 9,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        formatPoints(earnedPoints),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.monoLarge.copyWith(
+                          color: colors.ink,
+                          fontSize: 24,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '/ ${formatPoints(targetPoints)} pts',
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.inkMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${formatCompactMs(focusMs)} focused · $doneCount done · '
+                  '$openCount open',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkMuted,
+                    fontSize: 10.8,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${formatPoints(plannedPoints)} planned',
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: colors.inkFaint),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileReviewRow extends StatelessWidget {
+  const _MobileReviewRow({
+    required this.icon,
+    required this.tone,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color tone;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm,
+      ),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: tone.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: tone),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.titleM.copyWith(
+                    color: colors.ink,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: colors.inkFaint),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileUtilityRow extends StatelessWidget {
+  const _MobileUtilityRow({
+    required this.journalExcerpt,
+    required this.streak,
+    required this.inboxCount,
+    required this.onJournal,
+    required this.onInbox,
+  });
+
+  final String journalExcerpt;
+  final int streak;
+  final int inboxCount;
+  final VoidCallback onJournal;
+  final VoidCallback onInbox;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _MobileUtilityTile(
+              icon: Icons.edit_note_rounded,
+              tone: colors.gold,
+              title: 'Journal',
+              subtitle: journalExcerpt.isNotEmpty
+                  ? journalExcerpt
+                  : 'Two lines are enough',
+              hint: streak > 0 ? '$streak-day streak' : 'Start today',
+              onTap: onJournal,
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: _MobileUtilityTile(
+              icon: Icons.inbox_outlined,
+              tone: colors.primary,
+              title: 'Inbox',
+              subtitle: inboxCount == 0
+                  ? 'The ledger is tidy'
+                  : '$inboxCount ${inboxCount == 1 ? 'loose thread' : 'loose threads'}',
+              hint: 'No date yet',
+              onTap: onInbox,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileUtilityTile extends StatelessWidget {
+  const _MobileUtilityTile({
+    required this.icon,
+    required this.tone,
+    required this.title,
+    required this.subtitle,
+    required this.hint,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color tone;
+  final String title;
+  final String subtitle;
+  final String hint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      padding: const EdgeInsets.all(AppSpace.md),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: tone.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(AppRadius.badge),
+                ),
+                child: Icon(icon, size: 16, color: tone),
+              ),
+              const Spacer(),
+              Icon(
+                Icons.arrow_outward_rounded,
+                size: 14,
+                color: colors.inkFaint,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Text(
+            title,
+            style: AppText.titleM.copyWith(color: colors.ink, fontSize: 14),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkMuted,
+              fontSize: 10.8,
+              height: 1.35,
+            ),
+          ),
+          const Spacer(),
+          const SizedBox(height: 6),
+          Text(
+            hint,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.label.copyWith(
+              color: colors.inkFaint,
+              fontSize: 8.5,
+            ),
           ),
         ],
       ),

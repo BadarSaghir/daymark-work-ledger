@@ -280,78 +280,80 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
       );
     }
 
-    return _withBackGuard(Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: widget.onClose,
-            child: Container(color: Colors.black.withValues(alpha: 0.42)),
-          ),
-        ),
-        Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: EdgeInsets.only(
-              top: MediaQuery.sizeOf(context).height * 0.11,
-              left: AppSpace.lg,
-              right: AppSpace.lg,
+    return _withBackGuard(
+      Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: widget.onClose,
+              child: Container(color: Colors.black.withValues(alpha: 0.42)),
             ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 580),
-              child: Material(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                clipBehavior: Clip.antiAlias,
-                elevation: 24,
-                shadowColor: colors.shadow,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: colors.line),
-                  ),
-                  constraints: const BoxConstraints(maxHeight: 560),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpace.lg,
-                          AppSpace.md,
-                          AppSpace.md,
-                          AppSpace.md,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.search_rounded,
-                              size: 20,
-                              color: colors.inkFaint,
-                            ),
-                            const SizedBox(width: AppSpace.sm),
-                            Expanded(child: searchField),
-                            const KeyHint('ESC'),
-                          ],
-                        ),
-                      ),
-                      Divider(color: colors.line, height: 1),
-                      Flexible(
-                        child: ListView(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: AppSpace.sm,
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.sizeOf(context).height * 0.11,
+                left: AppSpace.lg,
+                right: AppSpace.lg,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 580),
+                child: Material(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
+                  clipBehavior: Clip.antiAlias,
+                  elevation: 24,
+                  shadowColor: colors.shadow,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      border: Border.all(color: colors.line),
+                    ),
+                    constraints: const BoxConstraints(maxHeight: 560),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpace.lg,
+                            AppSpace.md,
+                            AppSpace.md,
+                            AppSpace.md,
                           ),
-                          children: listChildren,
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search_rounded,
+                                size: 20,
+                                color: colors.inkFaint,
+                              ),
+                              const SizedBox(width: AppSpace.sm),
+                              Expanded(child: searchField),
+                              const KeyHint('ESC'),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        Divider(color: colors.line, height: 1),
+                        Flexible(
+                          child: ListView(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppSpace.sm,
+                            ),
+                            children: listChildren,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
-    ));
+        ],
+      ),
+    );
   }
 
   Widget _withBackGuard(Widget child) {

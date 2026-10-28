@@ -10,6 +10,7 @@ import '../../core/ui/brand_mark.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/ui/sheets.dart';
 import '../../core/ui/layout.dart';
+import '../../core/utils/platform.dart';
 import '../../features/calendar/calendar_page.dart';
 import '../../features/categories/categories_page.dart';
 import '../../features/accounts/local_account_ui.dart';
@@ -199,26 +200,32 @@ class _AppShellState extends ConsumerState<AppShell> {
     final page = IndexedStack(index: index, children: pages);
     final mobileChrome = compact && !paletteOpen;
 
+    final shortcuts = AppPlatform.showsKeyboardHints
+        ? <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+                _openPalette,
+            const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+                _openPalette,
+            const SingleActivator(LogicalKeyboardKey.keyP, control: true):
+                _openPalette,
+            const SingleActivator(LogicalKeyboardKey.keyP, meta: true):
+                _openPalette,
+            const SingleActivator(LogicalKeyboardKey.keyN, control: true):
+                _capture,
+            const SingleActivator(LogicalKeyboardKey.keyN, meta: true):
+                _capture,
+            const SingleActivator(LogicalKeyboardKey.escape): _closePalette,
+            for (var i = 0; i < NavLabels.titles.length; i++)
+              SingleActivator(
+                LogicalKeyboardKey(0x00000031 + i),
+                control: true,
+              ): () =>
+                  _go(i),
+          }
+        : const <ShortcutActivator, VoidCallback>{};
+
     return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyK, control: true):
-            _openPalette,
-        const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
-            _openPalette,
-        const SingleActivator(LogicalKeyboardKey.keyP, control: true):
-            _openPalette,
-        const SingleActivator(LogicalKeyboardKey.keyP, meta: true):
-            _openPalette,
-        const SingleActivator(LogicalKeyboardKey.keyN, control: true): _capture,
-        const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _capture,
-        const SingleActivator(LogicalKeyboardKey.escape): _closePalette,
-        for (var i = 0; i < NavLabels.titles.length; i++)
-          SingleActivator(
-            LogicalKeyboardKey(0x00000031 + i),
-            control: true,
-          ): () =>
-              _go(i),
-      },
+      bindings: shortcuts,
       child: Focus(
         autofocus: true,
         child: Scaffold(
@@ -255,14 +262,15 @@ class _AppShellState extends ConsumerState<AppShell> {
                 child: Stack(
                   children: [
                     Positioned.fill(child: CanvasWash(child: page)),
-                    Positioned(
-                      right: compact ? AppSpace.lg : AppSpace.xxl,
-                      bottom: compact ? AppSpace.lg : AppSpace.xxl,
-                      child: TimerPill(
-                        onOpen: () => _go(NavTarget.focus),
-                        compact: compact,
+                    if (!compact || index != NavTarget.focus)
+                      Positioned(
+                        right: compact ? AppSpace.lg : AppSpace.xxl,
+                        bottom: compact ? AppSpace.md : AppSpace.xxl,
+                        child: TimerPill(
+                          onOpen: () => _go(NavTarget.focus),
+                          compact: compact,
+                        ),
                       ),
-                    ),
                     if (paletteOpen)
                       Positioned.fill(
                         child: CommandPalette(onClose: _closePalette),
@@ -272,13 +280,17 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
             ],
           ),
+          floatingActionButton: mobileChrome
+              ? _CaptureFab(onTap: _capture)
+              : null,
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.centerDocked,
           bottomNavigationBar: mobileChrome
               ? _MobileNavBar(
                   index: index,
                   openToday: openToday,
                   timerActive: timerActive,
                   onGo: _go,
-                  onCapture: _capture,
                   onMore: () => _showMore(context),
                 )
               : null,
@@ -391,57 +403,120 @@ class _MobileAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onAccount;
 
   @override
-  Size get preferredSize => const Size.fromHeight(57);
+  Size get preferredSize => const Size.fromHeight(63);
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final initial = _initialFor(displayName);
-    return AppBar(
-      automaticallyImplyLeading: false,
-      titleSpacing: AppSpace.lg,
-      title: Row(
-        children: [
-          const BrandMark(size: 24),
-          const SizedBox(width: AppSpace.sm),
-          Flexible(
-            child: Text(
-              NavLabels.title(index),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+    return Material(
+      color: colors.canvas,
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 62,
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.line)),
           ),
-        ],
-      ),
-      actions: [
-        IconButton(
-          tooltip: 'Search',
-          onPressed: onSearch,
-          icon: const Icon(Icons.search_rounded, size: 23),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: AppSpace.sm),
-          child: IconButton(
-            tooltip: 'Local account',
-            onPressed: onAccount,
-            icon: CircleAvatar(
-              radius: 14,
-              backgroundColor: colors.primarySoft,
-              child: Text(
-                initial,
-                style: AppText.bodySmall.copyWith(
-                  color: colors.primary,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
+          child: Row(
+            children: [
+              const BrandMark(size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: AppDurations.fast,
+                      child: Text(
+                        NavLabels.title(index),
+                        key: ValueKey(index),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.titleM.copyWith(
+                          color: colors.ink,
+                          fontSize: 18,
+                          letterSpacing: -0.25,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      NavLabels.subtitle(index),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.inkFaint,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+              IconButton(
+                tooltip: 'Search',
+                onPressed: onSearch,
+                icon: const Icon(Icons.search_rounded, size: 23),
+              ),
+              const SizedBox(width: 2),
+              Semantics(
+                button: true,
+                label: 'Local account',
+                child: InkWell(
+                  onTap: onAccount,
+                  customBorder: const CircleBorder(),
+                  child: CircleAvatar(
+                    radius: 17,
+                    backgroundColor: colors.primarySoft,
+                    child: Text(
+                      initial,
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: colors.line),
+      ),
+    );
+  }
+}
+
+class _CaptureFab extends StatelessWidget {
+  const _CaptureFab({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Semantics(
+      button: true,
+      label: 'Capture work',
+      child: SizedBox(
+        width: 58,
+        height: 58,
+        child: FloatingActionButton(
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            onTap();
+          },
+          backgroundColor: colors.accent,
+          foregroundColor: Colors.white,
+          elevation: 5,
+          highlightElevation: 7,
+          shape: CircleBorder(
+            side: BorderSide(color: colors.surface, width: 3),
+          ),
+          child: const Icon(Icons.add_rounded, size: 29),
+        ),
       ),
     );
   }
@@ -453,7 +528,6 @@ class _MobileNavBar extends StatelessWidget {
     required this.openToday,
     required this.timerActive,
     required this.onGo,
-    required this.onCapture,
     required this.onMore,
   });
 
@@ -461,7 +535,6 @@ class _MobileNavBar extends StatelessWidget {
   final int openToday;
   final bool timerActive;
   final ValueChanged<int> onGo;
-  final VoidCallback onCapture;
   final VoidCallback onMore;
 
   @override
@@ -472,129 +545,184 @@ class _MobileNavBar extends StatelessWidget {
         : index == NavTarget.planner
         ? 1
         : index == NavTarget.focus
-        ? 3
-        : 4;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: colors.line)),
-      ),
-      child: NavigationBar(
-        selectedIndex: selected,
-        onDestinationSelected: (value) {
-          switch (value) {
-            case 0:
-              onGo(NavTarget.today);
-            case 1:
-              onGo(NavTarget.planner);
-            case 2:
-              onCapture();
-            case 3:
-              onGo(NavTarget.focus);
-            default:
-              onMore();
-          }
-        },
-        destinations: [
-          NavigationDestination(
-            icon: _NavIcon(icon: Icons.wb_sunny_outlined, badge: openToday),
-            selectedIcon: _NavIcon(
-              icon: Icons.wb_sunny_rounded,
-              badge: openToday,
-              selected: true,
+        ? 2
+        : 3;
+    return Material(
+      color: colors.surface,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: colors.line)),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow.withValues(alpha: 0.06),
+              blurRadius: 24,
+              offset: const Offset(0, -6),
             ),
-            label: 'Today',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.view_week_outlined),
-            selectedIcon: Icon(Icons.view_week_rounded),
-            label: 'Planner',
-          ),
-          NavigationDestination(
-            icon: Icon(
-              Icons.add_circle_rounded,
-              color: colors.accent,
-              size: 30,
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _MobileNavItem(
+                    icon: Icons.wb_sunny_outlined,
+                    selectedIcon: Icons.wb_sunny_rounded,
+                    label: 'Today',
+                    selected: selected == 0,
+                    badge: openToday,
+                    onTap: () => onGo(NavTarget.today),
+                  ),
+                ),
+                Expanded(
+                  child: _MobileNavItem(
+                    icon: Icons.view_week_outlined,
+                    selectedIcon: Icons.view_week_rounded,
+                    label: 'Planner',
+                    selected: selected == 1,
+                    onTap: () => onGo(NavTarget.planner),
+                  ),
+                ),
+                const SizedBox(width: 74),
+                Expanded(
+                  child: _MobileNavItem(
+                    icon: Icons.timer_outlined,
+                    selectedIcon: Icons.timer_rounded,
+                    label: 'Focus',
+                    selected: selected == 2,
+                    live: timerActive,
+                    onTap: () => onGo(NavTarget.focus),
+                  ),
+                ),
+                Expanded(
+                  child: _MobileNavItem(
+                    icon: Icons.grid_view_outlined,
+                    selectedIcon: Icons.grid_view_rounded,
+                    label: 'More',
+                    selected: selected == 3,
+                    onTap: onMore,
+                  ),
+                ),
+              ],
             ),
-            label: 'Capture',
           ),
-          NavigationDestination(
-            icon: _NavIcon(icon: Icons.timer_outlined, live: timerActive),
-            selectedIcon: _NavIcon(
-              icon: Icons.timer_rounded,
-              live: timerActive,
-              selected: true,
-            ),
-            label: 'Focus',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.grid_view_outlined),
-            selectedIcon: const Icon(Icons.grid_view_rounded),
-            label: 'More',
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _NavIcon extends StatelessWidget {
-  const _NavIcon({
+class _MobileNavItem extends StatelessWidget {
+  const _MobileNavItem({
     required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
     this.badge = 0,
-    this.selected = false,
     this.live = false,
   });
 
   final IconData icon;
-  final int badge;
+  final IconData selectedIcon;
+  final String label;
   final bool selected;
+  final VoidCallback onTap;
+  final int badge;
   final bool live;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(icon),
-        if (badge > 0)
-          Positioned(
-            top: -5,
-            right: -9,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+    final foreground = selected ? colors.primary : colors.inkMuted;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: AppDurations.fast,
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
               decoration: BoxDecoration(
-                color: colors.accent,
-                borderRadius: BorderRadius.circular(99),
+                color: selected
+                    ? colors.primary.withValues(alpha: 0.10)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
-              child: Text(
-                '$badge',
-                textAlign: TextAlign.center,
-                style: AppText.bodySmall.copyWith(
-                  color: Colors.white,
-                  fontSize: 9,
-                  height: 1.2,
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    selected ? selectedIcon : icon,
+                    size: 22,
+                    color: foreground,
+                  ),
+                  if (badge > 0)
+                    Positioned(
+                      top: -5,
+                      right: -9,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 16),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.accent,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          '$badge',
+                          textAlign: TextAlign.center,
+                          style: AppText.bodySmall.copyWith(
+                            color: Colors.white,
+                            fontSize: 9,
+                            height: 1.2,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (live)
+                    Positioned(
+                      top: -1,
+                      right: -2,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: colors.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: colors.surface, width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-          ),
-        if (live)
-          Positioned(
-            top: -1,
-            right: -2,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: colors.accent,
-                shape: BoxShape.circle,
-                border: Border.all(color: colors.surface, width: 1.5),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.bodySmall.copyWith(
+                color: foreground,
+                fontSize: 10.5,
+                height: 1.1,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
               ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 }

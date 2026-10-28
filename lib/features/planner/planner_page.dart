@@ -7,9 +7,11 @@ import '../../core/theme/app_typography.dart';
 import '../../core/ui/enum_ui.dart';
 import '../../core/ui/feedback.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../core/utils/durations.dart';
+import '../../core/utils/platform.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/task_view.dart';
 import '../../state/settings_controller.dart';
@@ -153,11 +155,18 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
                   onAdd: () => showQuickCapture(context, plannedDate: selected),
                 ),
                 const SizedBox(height: AppSpace.xl),
-                _BacklogRail(
-                  backlog: backlog,
-                  overdue: overdue,
-                  onAdd: () => showQuickCapture(context),
-                ),
+                if (Layout.isCompact(context))
+                  _MobileBacklogSummary(
+                    backlog: backlog,
+                    overdue: overdue,
+                    onOpen: () => _showBacklog(context, backlog, overdue),
+                  )
+                else
+                  _BacklogRail(
+                    backlog: backlog,
+                    overdue: overdue,
+                    onAdd: () => showQuickCapture(context),
+                  ),
               ],
             ],
           ),
@@ -279,8 +288,12 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
             ),
             const SizedBox(height: AppSpace.sm),
             Text(
-              'Hold a card and drop it on another column to move it. '
-              'The backlog is always visible, so nothing gets lost between days.',
+              AppPlatform.isMobile
+                  ? 'Hold a card and drop it on another column to move it. '
+                        'The backlog is always visible, so nothing gets lost '
+                        'between days.'
+                  : 'Drag a card onto another column to move it. The backlog '
+                        'stays visible, so nothing gets lost between days.',
               style: AppText.bodySmall.copyWith(
                 color: context.colors.inkFaint,
                 fontSize: 11.5,
@@ -289,6 +302,76 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showBacklog(
+    BuildContext context,
+    List<TaskView> backlog,
+    List<TaskView> overdue,
+  ) {
+    showAppSheet<void>(
+      context,
+      (sheetContext) => AppSheet(
+        title: 'Backlog & overdue',
+        subtitle: overdue.isEmpty
+            ? '${backlog.length} ${backlog.length == 1 ? 'loose thread' : 'loose threads'} waiting for a day.'
+            : '${overdue.length} overdue · ${backlog.length} in the backlog',
+        icon: Icons.inbox_outlined,
+        onClose: () => Navigator.of(sheetContext).pop(),
+        footer: FilledButton.icon(
+          onPressed: () {
+            Navigator.of(sheetContext).pop();
+            showQuickCapture(context);
+          },
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: const Text('Capture work'),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (overdue.isNotEmpty) ...[
+              _ListLabel('OVERDUE', '${overdue.length}'),
+              const SizedBox(height: AppSpace.sm),
+              for (final view in overdue) ...[
+                TaskCard(
+                  view: view,
+                  compact: true,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    openTaskDetail(context, view.task.id);
+                  },
+                ),
+                const SizedBox(height: AppSpace.sm),
+              ],
+              const SizedBox(height: AppSpace.lg),
+            ],
+            _ListLabel('BACKLOG', '${backlog.length}'),
+            const SizedBox(height: AppSpace.sm),
+            if (backlog.isEmpty)
+              Text(
+                'The backlog is clear. Nothing is waiting for a day.',
+                style: AppText.bodySmall.copyWith(
+                  color: sheetContext.colors.inkFaint,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else
+              for (final view in backlog) ...[
+                TaskCard(
+                  view: view,
+                  compact: true,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    openTaskDetail(context, view.task.id);
+                  },
+                ),
+                const SizedBox(height: AppSpace.sm),
+              ],
+          ],
+        ),
+      ),
+      maxWidth: 560,
     );
   }
 
@@ -845,18 +928,60 @@ class _ListPlan extends StatelessWidget {
         ],
         if (done.isNotEmpty) ...[
           const SizedBox(height: AppSpace.xl),
-          _ListLabel('COMPLETED', '${done.length}'),
-          const SizedBox(height: AppSpace.sm),
-          for (final view in done) ...[
-            TaskCard(
-              view: view,
-              compact: true,
-              onTap: () => openTaskDetail(context, view.task.id),
-            ),
+          if (Layout.isCompact(context))
+            _MobileBacklogSummary(
+              backlog: const [],
+              overdue: const [],
+              title: 'Completed',
+              subtitle:
+                  '${done.length} ${done.length == 1 ? 'loop closed' : 'loops closed'}',
+              icon: Icons.check_circle_outline_rounded,
+              tone: colors.green,
+              onOpen: () => _showDone(context),
+            )
+          else ...[
+            _ListLabel('COMPLETED', '${done.length}'),
             const SizedBox(height: AppSpace.sm),
+            for (final view in done) ...[
+              TaskCard(
+                view: view,
+                compact: true,
+                onTap: () => openTaskDetail(context, view.task.id),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
           ],
         ],
       ],
+    );
+  }
+
+  void _showDone(BuildContext context) {
+    showAppSheet<void>(
+      context,
+      (sheetContext) => AppSheet(
+        title: 'Completed',
+        subtitle: 'The loops you closed on this day.',
+        icon: Icons.check_circle_outline_rounded,
+        onClose: () => Navigator.of(sheetContext).pop(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final view in done) ...[
+              TaskCard(
+                view: view,
+                compact: true,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  openTaskDetail(context, view.task.id);
+                },
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+          ],
+        ),
+      ),
+      maxWidth: 560,
     );
   }
 }
@@ -926,6 +1051,91 @@ class _ListLabel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A single tappable row for compact phones. The full backlog lives in a sheet
+/// so the planner stays a day view instead of becoming an endless feed.
+class _MobileBacklogSummary extends StatelessWidget {
+  const _MobileBacklogSummary({
+    required this.backlog,
+    required this.overdue,
+    required this.onOpen,
+    this.title,
+    this.subtitle,
+    this.icon,
+    this.tone,
+  });
+
+  final List<TaskView> backlog;
+  final List<TaskView> overdue;
+  final VoidCallback onOpen;
+  final String? title;
+  final String? subtitle;
+  final IconData? icon;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final displayTone = tone ?? colors.primary;
+    final displayIcon = icon ?? Icons.inbox_outlined;
+    final displayTitle = title ?? 'Backlog';
+    final displaySubtitle =
+        subtitle ??
+        (overdue.isNotEmpty
+            ? '${overdue.length} overdue · ${backlog.length} waiting'
+            : backlog.isEmpty
+            ? 'Nothing waiting for a day'
+            : '${backlog.length} waiting for a day');
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm,
+      ),
+      onTap: onOpen,
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: displayTone.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(displayIcon, size: 18, color: displayTone),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.titleM.copyWith(
+                    color: colors.ink,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  displaySubtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: colors.inkFaint),
+        ],
+      ),
     );
   }
 }

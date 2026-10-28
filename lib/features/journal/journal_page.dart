@@ -139,6 +139,7 @@ class _JournalPageState extends ConsumerState<JournalPage> {
         )
         .toList();
     final wide = MediaQuery.sizeOf(context).width >= 1040;
+    final compact = Layout.isCompact(context);
 
     final editor = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -433,6 +434,32 @@ class _JournalPageState extends ConsumerState<JournalPage> {
       ],
     );
 
+    void showHistory() {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: 'Journal history',
+          subtitle: streak > 0
+              ? '$streak-day streak · ${filtered.length} '
+                    '${filtered.length == 1 ? 'entry' : 'entries'}'
+              : '${filtered.length} '
+                    '${filtered.length == 1 ? 'entry' : 'entries'}'
+                    ' · begin whenever you like',
+          icon: Icons.history_rounded,
+          onClose: () => Navigator.of(sheetContext).pop(),
+          child: _JournalHistoryPanel(
+            selectedKey: key,
+            streak: streak,
+            onSelect: (date) {
+              Navigator.of(sheetContext).pop();
+              _goDate(date);
+            },
+          ),
+        ),
+        maxWidth: 560,
+      );
+    }
+
     return PageWidth(
       child: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -453,6 +480,12 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                     icon: Icons.local_fire_department_outlined,
                     color: colors.gold,
                   ),
+                if (compact)
+                  IconButton.filledTonal(
+                    tooltip: 'Journal history',
+                    onPressed: showHistory,
+                    icon: const Icon(Icons.history_rounded, size: 18),
+                  ),
                 if (!Layout.isCompact(context))
                   OutlinedButton.icon(
                     onPressed: () => _goDate(DateTime.now()),
@@ -471,6 +504,8 @@ class _JournalPageState extends ConsumerState<JournalPage> {
                   SizedBox(width: 320, child: rail),
                 ],
               )
+            else if (compact)
+              editor
             else ...[
               editor,
               const SizedBox(height: AppSpace.lg),
@@ -509,6 +544,111 @@ class _JournalPageState extends ConsumerState<JournalPage> {
   int _wordCount(String text) {
     final matches = RegExp(r"[\w’'-]+").allMatches(text);
     return matches.length;
+  }
+}
+
+/// The streak, search, and recent entries rail, presented in a bottom sheet on
+/// phones so the editor keeps the screen.
+class _JournalHistoryPanel extends ConsumerStatefulWidget {
+  const _JournalHistoryPanel({
+    required this.selectedKey,
+    required this.streak,
+    required this.onSelect,
+  });
+
+  final String selectedKey;
+  final int streak;
+  final ValueChanged<DateTime> onSelect;
+
+  @override
+  ConsumerState<_JournalHistoryPanel> createState() =>
+      _JournalHistoryPanelState();
+}
+
+class _JournalHistoryPanelState extends ConsumerState<_JournalHistoryPanel> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final entries = ref.watch(journalProvider).value ?? const <JournalEntry>[];
+    final query = _search.text.trim().toLowerCase();
+    final filtered = entries
+        .where(
+          (item) =>
+              query.isEmpty ||
+              item.bodyMd.toLowerCase().contains(query) ||
+              item.dateKey.contains(query),
+        )
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.streak > 0) ...[
+          Row(
+            children: [
+              Icon(
+                Icons.local_fire_department_outlined,
+                size: 15,
+                color: colors.gold,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '${widget.streak} ${widget.streak == 1 ? 'day' : 'days'} in a row',
+                style: AppText.bodySmall.copyWith(
+                  color: colors.gold,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Even three lines count',
+                style: AppText.bodySmall.copyWith(
+                  color: colors.inkFaint,
+                  fontSize: 10.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+        ],
+        TextField(
+          controller: _search,
+          decoration: const InputDecoration(
+            hintText: 'Search the journal…',
+            prefixIcon: Icon(Icons.search_rounded, size: 17),
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: AppSpace.sm),
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpace.xl),
+            child: Text(
+              query.isEmpty ? 'No entries yet.' : 'No entries match.',
+              textAlign: TextAlign.center,
+              style: AppText.bodySmall.copyWith(
+                color: colors.inkFaint,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          )
+        else
+          for (final item in filtered.take(60))
+            _HistoryRow(
+              item: item,
+              selected: item.dateKey == widget.selectedKey,
+              onTap: () => widget.onSelect(parseDateKey(item.dateKey)),
+            ),
+      ],
+    );
   }
 }
 

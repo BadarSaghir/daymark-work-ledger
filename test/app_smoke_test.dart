@@ -89,6 +89,159 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('phone settings opens a section sheet without overflow', (
+    tester,
+  ) async {
+    await pumpApp(tester, const Size(390, 844));
+
+    await tester.tap(find.text('More'));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.tap(find.text('Settings'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Daily rhythm'), findsOneWidget);
+    expect(find.text('Backup & portability'), findsOneWidget);
+
+    await tester.tap(find.text('Daily rhythm'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Weight target'), findsOneWidget);
+    expect(find.text('Focus target'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone journal keeps history in a sheet', (tester) async {
+    await pumpApp(tester, const Size(390, 844));
+
+    await tester.tap(find.text('More'));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.tap(find.widgetWithText(ListTile, 'Journal'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Journal history'), findsNothing);
+    await tester.tap(find.byTooltip('Journal history'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Journal history'), findsOneWidget);
+    expect(find.text('Search the journal…'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone focus keeps the ritual in a sheet', (tester) async {
+    await pumpApp(tester, const Size(390, 844));
+
+    await tester.tap(find.text('Focus'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.text('A quiet clock for deep work'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Before you start'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Name the one thing you are doing.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone focus fits on screen without page scrolling', (
+    tester,
+  ) async {
+    await pumpApp(tester, const Size(390, 844));
+
+    await tester.tap(find.text('Focus'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Today’s log'), findsOneWidget);
+    expect(find.text('Start focus'), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('small phone focus still fits without overflow', (tester) async {
+    await pumpApp(tester, const Size(360, 640));
+
+    await tester.tap(find.text('Focus'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Today’s log'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bottom sheet menu stays reachable with system insets', (
+    tester,
+  ) async {
+    tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+    await pumpApp(tester, const Size(360, 640));
+
+    await tester.tap(find.text('More'));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final scrollable = find.byType(SingleChildScrollView).last;
+    await tester.drag(scrollable, const Offset(0, -260));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.text('Settings'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Daily rhythm'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('landscape phone focus lays the clock out sideways', (
+    tester,
+  ) async {
+    await pumpApp(tester, const Size(844, 390));
+
+    await tester.tap(find.text('Focus'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.text('Start focus'), findsOneWidget);
+    expect(find.byTooltip('Today’s log'), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('landscape sheet scrolls above the home indicator', (
+    tester,
+  ) async {
+    tester.view.padding = const FakeViewPadding(top: 0, bottom: 21);
+    await pumpApp(tester, const Size(844, 390));
+
+    await tester.tap(find.text('More'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 150));
+    }
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Search Daymark'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('desktop shell opens with a persistent sidebar', (tester) async {
     await pumpApp(tester, const Size(1440, 900));
 

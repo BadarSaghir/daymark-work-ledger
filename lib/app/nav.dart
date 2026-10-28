@@ -42,4 +42,21 @@ class NavLabels {
   };
 
   static String title(int index) => titles[index] ?? 'Daymark';
+
+  /// A short, quiet caption used by the mobile header. Desktop navigation has
+  /// room for grouping labels; the phone header gets one line of context.
+  static const subtitles = <int, String>{
+    NavTarget.today: 'Your day at a glance',
+    NavTarget.planner: 'Shape the day',
+    NavTarget.calendar: 'Time, at a glance',
+    NavTarget.journal: 'Write it down',
+    NavTarget.focus: 'One thing at a time',
+    NavTarget.insights: 'The honest mirror',
+    NavTarget.categories: 'Keep the ledger tidy',
+    NavTarget.settings: 'Make it yours',
+    NavTarget.nearby: 'Move between devices',
+  };
+
+  static String subtitle(int index) =>
+      subtitles[index] ?? 'Private work ledger';
 }

@@ -64,7 +64,7 @@ class TaskBundleService {
 
   static const format = 'daymark.task';
   static const formatVersion = 1;
-  static const appVersion = '1.3.0';
+  static const appVersion = '1.4.0';
   static const maxBytes = 100 * 1024 * 1024;
   static const maxAttachmentBytes = 90 * 1024 * 1024;
 

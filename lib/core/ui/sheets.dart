@@ -22,30 +22,36 @@ Future<T?> showAppSheet<T>(
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
+      useSafeArea: false,
       isDismissible: dismissible,
       enableDrag: dismissible,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final media = MediaQuery.of(sheetContext);
-        final bottomInset = media.viewInsets.bottom;
-        final safeBottom = media.padding.bottom;
-        final effectivePadding = padding.copyWith(
-          bottom: padding.bottom + safeBottom,
-        );
+        final keyboard = media.viewInsets.bottom;
+        final topInset = media.padding.top;
+        final availableHeight = media.size.height - keyboard - topInset;
+        final maxHeight = availableHeight
+            .clamp(0.0, media.size.height * 0.93)
+            .toDouble();
         return Padding(
-          padding: EdgeInsets.only(bottom: bottomInset),
+          padding: EdgeInsets.only(bottom: keyboard),
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: media.size.height * 0.93),
+            constraints: BoxConstraints(maxHeight: maxHeight),
             child: Material(
               color: sheetContext.colors.surface,
               clipBehavior: Clip.antiAlias,
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(AppRadius.sheet),
               ),
-              child: Padding(
-                padding: effectivePadding,
-                child: builder(sheetContext),
+              child: SafeArea(
+                top: false,
+                bottom: true,
+                minimum: const EdgeInsets.only(bottom: 2),
+                child: Padding(
+                  padding: padding.copyWith(bottom: AppSpace.sm),
+                  child: builder(sheetContext),
+                ),
               ),
             ),
           ),

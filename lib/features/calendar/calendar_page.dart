@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/enum_ui.dart';
 import '../../core/ui/layout.dart';
+import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../core/utils/durations.dart';
@@ -38,6 +39,12 @@ class CalendarPage extends ConsumerWidget {
     final monthTotal = focusByDay.values.fold<int>(0, (a, b) => a + b);
     final monthOccupied = _scheduledMinutesForMonth(views, month);
     final activeDays = focusByDay.values.where((ms) => ms > 0).length;
+    final compact = Layout.isCompact(context);
+
+    void chooseDay(DateTime day) {
+      ref.read(selectedDateProvider.notifier).state = day;
+      if (compact) openDayAgendaSheet(context, day);
+    }
 
     final header = PageHeader(
       eyebrow: weekMode ? 'Week view' : 'Month view',
@@ -86,149 +93,170 @@ class CalendarPage extends ConsumerWidget {
             anchor: selected,
             views: views,
             focusByDay: focusByDay,
-            onSelect: (day) =>
-                ref.read(selectedDateProvider.notifier).state = day,
+            onSelect: chooseDay,
           )
         : _MonthGrid(
             anchor: selected,
             mondayFirst: mondayFirst,
             views: views,
             focusByDay: focusByDay,
-            onSelect: (day) =>
-                ref.read(selectedDateProvider.notifier).state = day,
+            onSelect: chooseDay,
           );
+
+    final dayPanel = SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            relativeDayLabel(selected).toUpperCase(),
+            style: AppText.label.copyWith(color: colors(context).inkFaint),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            longDateLabel(selected),
+            style: AppText.displayS.copyWith(color: colors(context).ink),
+          ),
+          const SizedBox(height: AppSpace.lg),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniStat(
+                  label: 'Focus',
+                  value: formatCompactMs(dayFocus),
+                  color: colors(context).accent,
+                ),
+              ),
+              Container(width: 1, height: 34, color: colors(context).line),
+              Expanded(
+                child: _MiniStat(
+                  label: 'Booked',
+                  value: formatCompact(Duration(minutes: dayOccupied)),
+                  color: colors(context).green,
+                ),
+              ),
+              Container(width: 1, height: 34, color: colors(context).line),
+              Expanded(
+                child: _MiniStat(
+                  label: 'Tasks',
+                  value: '${dayTasks.where((v) => !v.isDone).length} open',
+                  color: colors(context).primary,
+                ),
+              ),
+            ],
+          ),
+          if (dayTasks.isNotEmpty) ...[
+            const SizedBox(height: AppSpace.lg),
+            for (final view in dayTasks.take(5)) ...[
+              TaskCard(
+                view: view,
+                compact: true,
+                onTap: () => openTaskDetail(context, view.task.id),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+            if (dayTasks.length > 5)
+              TextButton(
+                onPressed: () {
+                  ref.read(selectedDateProvider.notifier).state = selected;
+                  ref.read(navIndexProvider.notifier).state = NavTarget.planner;
+                },
+                child: Text('+${dayTasks.length - 5} more'),
+              ),
+          ] else ...[
+            const SizedBox(height: AppSpace.lg),
+            Text(
+              'No work planned. Leave it open, or capture one thing.',
+              style: AppText.bodySmall.copyWith(
+                color: colors(context).inkMuted,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: AppSpace.md),
+            OutlinedButton.icon(
+              onPressed: () => showQuickCapture(context, plannedDate: selected),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Add to this day'),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    final monthPanel = SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'THIS MONTH',
+            style: AppText.label.copyWith(color: colors(context).inkFaint),
+          ),
+          const SizedBox(height: AppSpace.md),
+          _MonthStatRow(
+            label: 'Focus time',
+            value: formatCompactMs(monthTotal),
+          ),
+          _MonthStatRow(
+            label: 'Scheduled hours',
+            value: formatCompact(Duration(minutes: monthOccupied)),
+          ),
+          _MonthStatRow(label: 'Active days', value: '$activeDays'),
+          _MonthStatRow(
+            label: 'Average',
+            value: activeDays == 0
+                ? '—'
+                : formatCompactMs(monthTotal ~/ activeDays),
+          ),
+          _MonthStatRow(
+            label: 'Planned weight',
+            value: formatPoints(
+              views
+                  .where(
+                    (view) =>
+                        view.task.plannedDate != null &&
+                        view.task.plannedDate!.startsWith(
+                          '${month.year}-${month.month.toString().padLeft(2, '0')}',
+                        ),
+                  )
+                  .fold<double>(0, (sum, view) => sum + view.points),
+            ),
+          ),
+        ],
+      ),
+    );
 
     final rail = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SurfaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                relativeDayLabel(selected).toUpperCase(),
-                style: AppText.label.copyWith(color: colors(context).inkFaint),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                longDateLabel(selected),
-                style: AppText.displayS.copyWith(color: colors(context).ink),
-              ),
-              const SizedBox(height: AppSpace.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: _MiniStat(
-                      label: 'Focus',
-                      value: formatCompactMs(dayFocus),
-                      color: colors(context).accent,
-                    ),
-                  ),
-                  Container(width: 1, height: 34, color: colors(context).line),
-                  Expanded(
-                    child: _MiniStat(
-                      label: 'Booked',
-                      value: formatCompact(Duration(minutes: dayOccupied)),
-                      color: colors(context).green,
-                    ),
-                  ),
-                  Container(width: 1, height: 34, color: colors(context).line),
-                  Expanded(
-                    child: _MiniStat(
-                      label: 'Tasks',
-                      value: '${dayTasks.where((v) => !v.isDone).length} open',
-                      color: colors(context).primary,
-                    ),
-                  ),
-                ],
-              ),
-              if (dayTasks.isNotEmpty) ...[
-                const SizedBox(height: AppSpace.lg),
-                for (final view in dayTasks.take(5)) ...[
-                  TaskCard(
-                    view: view,
-                    compact: true,
-                    onTap: () => openTaskDetail(context, view.task.id),
-                  ),
-                  const SizedBox(height: AppSpace.sm),
-                ],
-                if (dayTasks.length > 5)
-                  TextButton(
-                    onPressed: () {
-                      ref.read(selectedDateProvider.notifier).state = selected;
-                      ref.read(navIndexProvider.notifier).state =
-                          NavTarget.planner;
-                    },
-                    child: Text('+${dayTasks.length - 5} more'),
-                  ),
-              ] else ...[
-                const SizedBox(height: AppSpace.lg),
-                Text(
-                  'No work planned. Leave it open, or capture one thing.',
-                  style: AppText.bodySmall.copyWith(
-                    color: colors(context).inkMuted,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-                const SizedBox(height: AppSpace.md),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      showQuickCapture(context, plannedDate: selected),
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Add to this day'),
-                ),
-              ],
-            ],
-          ),
-        ),
+        dayPanel,
         if (dayBlocks.isNotEmpty) ...[
           const SizedBox(height: AppSpace.lg),
           _DayHoursCard(blocks: dayBlocks, occupiedMinutes: dayOccupied),
         ],
         const SizedBox(height: AppSpace.lg),
-        SurfaceCard(
+        monthPanel,
+      ],
+    );
+
+    void openMonthSheet() {
+      showAppSheet<void>(
+        context,
+        (sheetContext) => AppSheet(
+          title: 'This month',
+          subtitle: monthLong(month),
+          icon: Icons.calendar_month_outlined,
+          onClose: () => Navigator.of(sheetContext).pop(),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'THIS MONTH',
-                style: AppText.label.copyWith(color: colors(context).inkFaint),
-              ),
-              const SizedBox(height: AppSpace.md),
-              _MonthStatRow(
-                label: 'Focus time',
-                value: formatCompactMs(monthTotal),
-              ),
-              _MonthStatRow(
-                label: 'Scheduled hours',
-                value: formatCompact(Duration(minutes: monthOccupied)),
-              ),
-              _MonthStatRow(label: 'Active days', value: '$activeDays'),
-              _MonthStatRow(
-                label: 'Average',
-                value: activeDays == 0
-                    ? '—'
-                    : formatCompactMs(monthTotal ~/ activeDays),
-              ),
-              _MonthStatRow(
-                label: 'Planned weight',
-                value: formatPoints(
-                  views
-                      .where(
-                        (view) =>
-                            view.task.plannedDate != null &&
-                            view.task.plannedDate!.startsWith(
-                              '${month.year}-${month.month.toString().padLeft(2, '0')}',
-                            ),
-                      )
-                      .fold<double>(0, (sum, view) => sum + view.points),
-                ),
-              ),
+              monthPanel,
+              const SizedBox(height: AppSpace.lg),
+              _Legend(),
             ],
           ),
         ),
-      ],
-    );
+        maxWidth: 560,
+      );
+    }
 
     return PageWidth(
       child: SingleChildScrollView(
@@ -250,13 +278,20 @@ class CalendarPage extends ConsumerWidget {
                   SizedBox(width: 330, child: rail),
                 ],
               )
-            else ...[
+            else if (!compact) ...[
               content,
               const SizedBox(height: AppSpace.xl),
               rail,
+            ] else ...[
+              content,
+              const SizedBox(height: AppSpace.lg),
+              _MobileMonthSummary(
+                totalMs: monthTotal,
+                activeDays: activeDays,
+                onOpen: openMonthSheet,
+              ),
             ],
-            const SizedBox(height: AppSpace.lg),
-            _Legend(),
+            if (!compact) ...[const SizedBox(height: AppSpace.lg), _Legend()],
           ],
         ),
       ),
@@ -336,7 +371,7 @@ class _CalendarNav extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  'Tap a day to inspect it',
+                  'Tap a day for its agenda',
                   style: AppText.bodySmall.copyWith(
                     color: colors.inkFaint,
                     fontSize: 10.5,
@@ -783,6 +818,194 @@ class _MonthStatRow extends StatelessWidget {
             value,
             style: AppText.monoData.copyWith(color: colors.ink, fontSize: 11.5),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+void openDayAgendaSheet(BuildContext context, DateTime day) {
+  showAppSheet<void>(
+    context,
+    (sheetContext) => _DayAgendaSheet(day: day, rootContext: context),
+    maxWidth: 560,
+  );
+}
+
+class _DayAgendaSheet extends ConsumerWidget {
+  const _DayAgendaSheet({required this.day, required this.rootContext});
+
+  final DateTime day;
+  final BuildContext rootContext;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.colors;
+    final views = ref.watch(tasksProvider).value ?? const <TaskView>[];
+    final dayTasks = _viewsForDay(views, day);
+    final dayFocus = ref.watch(dayFocusProvider(day)).value ?? 0;
+    final dayBlocks = _scheduledBlocksForDay(day, views);
+    final dayOccupied = _occupiedMinutes(dayBlocks);
+    final open = dayTasks.where((view) => !view.isDone).length;
+
+    return AppSheet(
+      title: isToday(day) ? 'Today' : relativeDayLabel(day),
+      subtitle: longDateLabel(day),
+      icon: Icons.calendar_today_rounded,
+      onClose: () => Navigator.of(context).maybePop(),
+      footer: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                showQuickCapture(rootContext, plannedDate: day);
+              },
+              icon: const Icon(Icons.add_rounded, size: 17),
+              label: const Text('Add work'),
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () {
+                ref.read(selectedDateProvider.notifier).state = day;
+                ref.read(navIndexProvider.notifier).state = NavTarget.planner;
+                Navigator.of(context).pop();
+              },
+              icon: const Icon(Icons.view_week_outlined, size: 17),
+              label: const Text('Open day'),
+            ),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _MiniStat(
+                  label: 'Focus',
+                  value: formatCompactMs(dayFocus),
+                  color: colors.accent,
+                ),
+              ),
+              Container(width: 1, height: 34, color: colors.line),
+              Expanded(
+                child: _MiniStat(
+                  label: 'Booked',
+                  value: formatCompact(Duration(minutes: dayOccupied)),
+                  color: colors.green,
+                ),
+              ),
+              Container(width: 1, height: 34, color: colors.line),
+              Expanded(
+                child: _MiniStat(
+                  label: 'Open',
+                  value: '$open',
+                  color: colors.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.lg),
+          if (dayTasks.isEmpty)
+            Text(
+              'Nothing is planned. Leave the day open, or capture one honest '
+              'piece of work.',
+              style: AppText.bodySmall.copyWith(
+                color: colors.inkMuted,
+                fontStyle: FontStyle.italic,
+                height: 1.5,
+              ),
+            )
+          else
+            for (final view in dayTasks) ...[
+              TaskCard(
+                view: view,
+                compact: true,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  openTaskDetail(rootContext, view.task.id);
+                },
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
+          if (dayBlocks.isNotEmpty) ...[
+            const SizedBox(height: AppSpace.md),
+            _DayHoursCard(blocks: dayBlocks, occupiedMinutes: dayOccupied),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The month summary is secondary on a phone, so it becomes one quiet row that
+/// opens the full numbers and legend in a sheet.
+class _MobileMonthSummary extends StatelessWidget {
+  const _MobileMonthSummary({
+    required this.totalMs,
+    required this.activeDays,
+    required this.onOpen,
+  });
+
+  final int totalMs;
+  final int activeDays;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm,
+      ),
+      onTap: onOpen,
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: colors.primary.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.calendar_month_outlined,
+              size: 18,
+              color: colors.primary,
+            ),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This month',
+                  style: AppText.titleM.copyWith(
+                    color: colors.ink,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  '${formatCompactMs(totalMs)} focus · $activeDays active '
+                  '${activeDays == 1 ? 'day' : 'days'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodySmall.copyWith(
+                    color: colors.inkFaint,
+                    fontSize: 10.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: colors.inkFaint),
         ],
       ),
     );
