@@ -9,11 +9,11 @@ import '../models/app_settings.dart';
 class Migrations {
   Migrations._();
 
-  static const int latestVersion = 2;
+  static const int latestVersion = 3;
 
   static Future<void> create(Database db) async {
     final batch = db.batch();
-    for (final statement in [..._v1, ..._v2]) {
+    for (final statement in [..._v1, ..._v2, ..._v3]) {
       batch.execute(statement);
     }
     await batch.commit(noResult: true);
@@ -30,6 +30,10 @@ class Migrations {
           await _seed(db);
         case 2:
           for (final statement in _v2) {
+            await db.execute(statement);
+          }
+        case 3:
+          for (final statement in _v3) {
             await db.execute(statement);
           }
         default:
@@ -204,5 +208,11 @@ class Migrations {
     )
     ''',
     'CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id)',
+  ];
+
+  /// v3 turns a task reminder into an optional daily repeating reminder that
+  /// fires at the same local time every day.
+  static const List<String> _v3 = [
+    'ALTER TABLE tasks ADD COLUMN reminder_daily INTEGER NOT NULL DEFAULT 0',
   ];
 }

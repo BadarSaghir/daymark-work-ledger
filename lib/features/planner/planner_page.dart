@@ -11,7 +11,6 @@ import '../../core/ui/sheets.dart';
 import '../../core/ui/surface_card.dart';
 import '../../core/utils/date_keys.dart';
 import '../../core/utils/durations.dart';
-import '../../core/utils/platform.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/task_view.dart';
 import '../../state/settings_controller.dart';
@@ -44,6 +43,7 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final selected = ref.watch(selectedDateProvider);
     final listMode = ref.watch(plannerListModeProvider);
     final tasksAsync = ref.watch(tasksProvider);
@@ -187,111 +187,186 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
             const SizedBox(height: AppSpace.xl),
             _BoardSummary(summary: summary, target: target, selected: selected),
             const SizedBox(height: AppSpace.lg),
-            SizedBox(
-              height: 620,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.only(bottom: AppSpace.md),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _BoardColumn(
-                      key: const ValueKey('backlog'),
-                      title: 'Backlog',
-                      eyebrow: 'No date',
-                      icon: Icons.inbox_outlined,
-                      color: context.colors.inkMuted,
-                      tasks: backlog,
-                      dropStatus: TaskStatus.inbox,
-                      onDrop: (taskId) => _moveToBacklog(ref, views, taskId),
-                      onAdd: () => showQuickCapture(context),
+            Builder(
+              builder: (context) {
+                final compact = Layout.isCompact(context);
+                final columns = <Widget>[
+                  _BoardColumn(
+                    key: const ValueKey('backlog'),
+                    fluid: compact,
+                    title: 'Backlog',
+                    eyebrow: 'No date',
+                    icon: Icons.inbox_outlined,
+                    color: colors.inkMuted,
+                    tasks: backlog,
+                    dropStatus: TaskStatus.inbox,
+                    onDrop: (taskId) => _moveToBacklog(ref, views, taskId),
+                    onAdd: () => showQuickCapture(context),
+                  ),
+                  _BoardColumn(
+                    key: const ValueKey('planned'),
+                    fluid: compact,
+                    title: 'Planned',
+                    eyebrow: 'Ready',
+                    icon: Icons.event_available_outlined,
+                    color: colors.blue,
+                    tasks:
+                        dayTasks
+                            .where(
+                              (view) =>
+                                  !view.isDone &&
+                                  (view.task.status == TaskStatus.planned ||
+                                      view.task.status == TaskStatus.inbox),
+                            )
+                            .toList()
+                          ..sort(_sortTasks),
+                    dropStatus: TaskStatus.planned,
+                    onDrop: (taskId) => _moveToDay(ref, views, taskId, selected),
+                    onAdd: () =>
+                        showQuickCapture(context, plannedDate: selected),
+                  ),
+                  _BoardColumn(
+                    key: const ValueKey('in-progress'),
+                    fluid: compact,
+                    title: 'In progress',
+                    eyebrow: 'Moving',
+                    icon: Icons.play_circle_outline_rounded,
+                    color: colors.accent,
+                    tasks: dayTasks
+                        .where(
+                          (view) =>
+                              !view.isDone &&
+                              view.task.status == TaskStatus.inProgress,
+                        )
+                        .toList(),
+                    dropStatus: TaskStatus.inProgress,
+                    onDrop: (taskId) =>
+                        _setStatus(ref, taskId, TaskStatus.inProgress),
+                    onAdd: () =>
+                        showQuickCapture(context, plannedDate: selected),
+                  ),
+                  _BoardColumn(
+                    key: const ValueKey('blocked'),
+                    fluid: compact,
+                    title: 'Blocked',
+                    eyebrow: 'Waiting',
+                    icon: Icons.block_rounded,
+                    color: colors.rose,
+                    tasks: dayTasks
+                        .where(
+                          (view) =>
+                              !view.isDone &&
+                              view.task.status == TaskStatus.blocked,
+                        )
+                        .toList(),
+                    dropStatus: TaskStatus.blocked,
+                    onDrop: (taskId) =>
+                        _setStatus(ref, taskId, TaskStatus.blocked),
+                    onAdd: () =>
+                        showQuickCapture(context, plannedDate: selected),
+                  ),
+                  _BoardColumn(
+                    key: const ValueKey('done'),
+                    fluid: compact,
+                    title: 'Done',
+                    eyebrow: 'Closed',
+                    icon: Icons.check_circle_outline_rounded,
+                    color: colors.green,
+                    tasks: done,
+                    dropStatus: TaskStatus.done,
+                    onDrop: (taskId) =>
+                        _setStatus(ref, taskId, TaskStatus.done),
+                    onAdd: null,
+                  ),
+                ];
+                if (compact) {
+                  return DefaultTabController(
+                    length: columns.length,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          isScrollable: true,
+                          labelColor: colors.primary,
+                          unselectedLabelColor: colors.inkMuted,
+                          indicatorColor: colors.primary,
+                          dividerColor: colors.line,
+                          tabs: [
+                            for (final (label, count) in [
+                              ('Backlog', backlog.length),
+                              (
+                                'Planned',
+                                dayTasks
+                                    .where(
+                                      (view) =>
+                                          !view.isDone &&
+                                          (view.task.status ==
+                                                  TaskStatus.planned ||
+                                              view.task.status ==
+                                                  TaskStatus.inbox),
+                                    )
+                                    .length,
+                              ),
+                              (
+                                'Active',
+                                dayTasks
+                                    .where(
+                                      (view) =>
+                                          !view.isDone &&
+                                          view.task.status ==
+                                              TaskStatus.inProgress,
+                                    )
+                                    .length,
+                              ),
+                              (
+                                'Blocked',
+                                dayTasks
+                                    .where(
+                                      (view) =>
+                                          !view.isDone &&
+                                          view.task.status ==
+                                              TaskStatus.blocked,
+                                    )
+                                    .length,
+                              ),
+                              ('Done', done.length),
+                            ])
+                              Tab(text: '$label · $count'),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpace.sm),
+                        SizedBox(
+                          height: (MediaQuery.sizeOf(context).height * 0.56)
+                              .clamp(340.0, 560.0),
+                          child: TabBarView(children: columns),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: AppSpace.md),
-                    _BoardColumn(
-                      key: const ValueKey('planned'),
-                      title: 'Planned',
-                      eyebrow: 'Ready',
-                      icon: Icons.event_available_outlined,
-                      color: context.colors.blue,
-                      tasks:
-                          dayTasks
-                              .where(
-                                (view) =>
-                                    !view.isDone &&
-                                    (view.task.status == TaskStatus.planned ||
-                                        view.task.status == TaskStatus.inbox),
-                              )
-                              .toList()
-                            ..sort(_sortTasks),
-                      dropStatus: TaskStatus.planned,
-                      onDrop: (taskId) =>
-                          _moveToDay(ref, views, taskId, selected),
-                      onAdd: () =>
-                          showQuickCapture(context, plannedDate: selected),
+                  );
+                }
+                return SizedBox(
+                  height: 620,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.only(bottom: AppSpace.md),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var index = 0; index < columns.length; index++) ...[
+                          if (index > 0)
+                            const SizedBox(width: AppSpace.md),
+                          columns[index],
+                        ],
+                      ],
                     ),
-                    const SizedBox(width: AppSpace.md),
-                    _BoardColumn(
-                      key: const ValueKey('in-progress'),
-                      title: 'In progress',
-                      eyebrow: 'Moving',
-                      icon: Icons.play_circle_outline_rounded,
-                      color: context.colors.accent,
-                      tasks: dayTasks
-                          .where(
-                            (view) =>
-                                !view.isDone &&
-                                view.task.status == TaskStatus.inProgress,
-                          )
-                          .toList(),
-                      dropStatus: TaskStatus.inProgress,
-                      onDrop: (taskId) =>
-                          _setStatus(ref, taskId, TaskStatus.inProgress),
-                      onAdd: () =>
-                          showQuickCapture(context, plannedDate: selected),
-                    ),
-                    const SizedBox(width: AppSpace.md),
-                    _BoardColumn(
-                      key: const ValueKey('blocked'),
-                      title: 'Blocked',
-                      eyebrow: 'Waiting',
-                      icon: Icons.block_rounded,
-                      color: context.colors.rose,
-                      tasks: dayTasks
-                          .where(
-                            (view) =>
-                                !view.isDone &&
-                                view.task.status == TaskStatus.blocked,
-                          )
-                          .toList(),
-                      dropStatus: TaskStatus.blocked,
-                      onDrop: (taskId) =>
-                          _setStatus(ref, taskId, TaskStatus.blocked),
-                      onAdd: () =>
-                          showQuickCapture(context, plannedDate: selected),
-                    ),
-                    const SizedBox(width: AppSpace.md),
-                    _BoardColumn(
-                      key: const ValueKey('done'),
-                      title: 'Done',
-                      eyebrow: 'Closed',
-                      icon: Icons.check_circle_outline_rounded,
-                      color: context.colors.green,
-                      tasks: done,
-                      dropStatus: TaskStatus.done,
-                      onDrop: (taskId) =>
-                          _setStatus(ref, taskId, TaskStatus.done),
-                      onAdd: null,
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: AppSpace.sm),
             Text(
-              AppPlatform.isMobile
-                  ? 'Hold a card and drop it on another column to move it. '
-                        'The backlog is always visible, so nothing gets lost '
-                        'between days.'
+              Layout.isCompact(context)
+                  ? 'Swipe between the column tabs. Tap a card to open it and '
+                        'move it through its status.'
                   : 'Drag a card onto another column to move it. The backlog '
                         'stays visible, so nothing gets lost between days.',
               style: AppText.bodySmall.copyWith(
@@ -692,6 +767,7 @@ class _BoardColumn extends StatelessWidget {
     required this.dropStatus,
     required this.onDrop,
     required this.onAdd,
+    this.fluid = false,
   });
 
   final String title;
@@ -703,16 +779,70 @@ class _BoardColumn extends StatelessWidget {
   final Future<void> Function(String taskId) onDrop;
   final VoidCallback? onAdd;
 
+  /// When true the column fills the available width and scrolls its cards.
+  /// This is used by the compact tabbed board.
+  final bool fluid;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final cards = <Widget>[
+      if (tasks.isEmpty)
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: AppSpace.xxl),
+          decoration: BoxDecoration(
+            color: colors.surfaceSunken.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(AppRadius.input),
+          ),
+          child: Text(
+            dropStatus == TaskStatus.done
+                ? 'Finished work lands here.'
+                : 'Drop work here, or add something new.',
+            textAlign: TextAlign.center,
+            style: AppText.bodySmall.copyWith(
+              color: colors.inkFaint,
+              fontStyle: FontStyle.italic,
+              fontSize: 11.5,
+            ),
+          ),
+        )
+      else
+        for (final view in tasks) ...[
+          LongPressDraggable<String>(
+            data: view.task.id,
+            delay: const Duration(milliseconds: 180),
+            feedback: Material(
+              color: Colors.transparent,
+              child: SizedBox(
+                width: 300,
+                child: TaskCard(
+                  view: view,
+                  compact: true,
+                  onTap: () {},
+                  dragging: true,
+                ),
+              ),
+            ),
+            childWhenDragging: Opacity(
+              opacity: 0.35,
+              child: TaskCard(view: view, compact: true, onTap: () {}),
+            ),
+            child: TaskCard(
+              view: view,
+              compact: true,
+              onTap: () => openTaskDetail(context, view.task.id),
+            ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+        ],
+    ];
     return DragTarget<String>(
       onAcceptWithDetails: (details) => onDrop(details.data),
       builder: (context, candidates, rejected) {
         final hovered = candidates.isNotEmpty;
         return AnimatedContainer(
           duration: AppDurations.fast,
-          width: 306,
+          width: fluid ? null : 306,
           padding: const EdgeInsets.all(AppSpace.md),
           decoration: BoxDecoration(
             color: hovered
@@ -726,7 +856,7 @@ class _BoardColumn extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: fluid ? MainAxisSize.max : MainAxisSize.min,
             children: [
               Row(
                 children: [
@@ -774,54 +904,15 @@ class _BoardColumn extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppSpace.sm),
-              if (tasks.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpace.xxl),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceSunken.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(AppRadius.input),
-                  ),
-                  child: Text(
-                    dropStatus == TaskStatus.done
-                        ? 'Finished work lands here.'
-                        : 'Drop work here, or add something new.',
-                    textAlign: TextAlign.center,
-                    style: AppText.bodySmall.copyWith(
-                      color: colors.inkFaint,
-                      fontStyle: FontStyle.italic,
-                      fontSize: 11.5,
-                    ),
+              if (fluid)
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: cards,
                   ),
                 )
               else
-                for (final view in tasks) ...[
-                  LongPressDraggable<String>(
-                    data: view.task.id,
-                    delay: const Duration(milliseconds: 180),
-                    feedback: Material(
-                      color: Colors.transparent,
-                      child: SizedBox(
-                        width: 300,
-                        child: TaskCard(
-                          view: view,
-                          compact: true,
-                          onTap: () {},
-                          dragging: true,
-                        ),
-                      ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.35,
-                      child: TaskCard(view: view, compact: true, onTap: () {}),
-                    ),
-                    child: TaskCard(
-                      view: view,
-                      compact: true,
-                      onTap: () => openTaskDetail(context, view.task.id),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpace.sm),
-                ],
+                ...cards,
             ],
           ),
         );

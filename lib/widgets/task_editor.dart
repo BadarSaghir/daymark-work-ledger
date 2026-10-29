@@ -57,6 +57,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   late DateTime? _end;
   late DateTime? _due;
   late DateTime? _reminderAt;
+  late bool _reminderDaily;
 
   bool _saving = false;
   String? _error;
@@ -93,6 +94,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
     _end = task?.scheduledEnd;
     _due = task?.dueAt;
     _reminderAt = task?.reminderAt;
+    _reminderDaily = task?.reminderDaily ?? false;
   }
 
   @override
@@ -138,6 +140,24 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   Future<void> _pickReminder() async {
     final now = DateTime.now();
     final initial = _reminderAt ?? _start ?? now.add(const Duration(hours: 1));
+    if (_reminderDaily) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(initial),
+        helpText: 'Remind me every day at…',
+      );
+      if (time == null) return;
+      setState(() {
+        _reminderAt = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          time.hour,
+          time.minute,
+        );
+      });
+      return;
+    }
     final date = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -164,6 +184,31 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
       return;
     }
     setState(() => _reminderAt = picked);
+  }
+
+  Future<void> _toggleReminderDaily(bool daily) async {
+    final at = _reminderAt;
+    if (daily && at != null) {
+      // Keep only the clock time for a repeating reminder and re-anchor it to
+      // today so the next occurrence is always in the future.
+      final now = DateTime.now();
+      setState(() {
+        _reminderDaily = true;
+        _reminderAt = DateTime(now.year, now.month, now.day, at.hour, at.minute);
+      });
+    } else if (!daily) {
+      setState(() {
+        _reminderDaily = false;
+        final now = DateTime.now();
+        if (_reminderAt != null && !_reminderAt!.isAfter(now)) {
+          // A daily reminder stores a clock time; when switching back to a
+          // one-off, move it forward so it can actually fire.
+          _reminderAt = now.add(const Duration(hours: 1));
+        }
+      });
+    } else {
+      setState(() => _reminderDaily = daily);
+    }
   }
 
   Future<void> _pickTime({required bool start}) async {
@@ -237,6 +282,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           scheduledEnd: _end,
           dueAt: _due,
           reminderAt: _reminderAt,
+          reminderDaily: _reminderAt != null && _reminderDaily,
           reminderNote: _reminderAt == null
               ? null
               : (_reminderNote.text.trim().isEmpty
@@ -277,6 +323,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           scheduledEnd: _end,
           dueAt: _due,
           reminderAt: _reminderAt,
+          reminderDaily: _reminderAt != null && _reminderDaily,
           reminderNote: _reminderAt == null
               ? null
               : (_reminderNote.text.trim().isEmpty
@@ -378,6 +425,43 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (isEditing) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.md,
+                vertical: AppSpace.sm,
+              ),
+              decoration: BoxDecoration(
+                color: colors.accentSoft.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(AppRadius.input),
+                border: Border.all(
+                  color: colors.accent.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.edit_note_rounded,
+                    size: 18,
+                    color: colors.accent,
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
+                    child: Text(
+                      'Editing mode · changes replace the existing task. '
+                      'Nothing is saved until you tap Save changes.',
+                      style: AppText.bodySmall.copyWith(
+                        color: colors.ink,
+                        fontSize: 10.8,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpace.lg),
+          ],
           FormLabel('Title'),
           TextField(
             controller: _title,
@@ -487,9 +571,13 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
                     : () => setState(() => _due = null),
               ),
               _DateChip(
-                icon: Icons.notifications_active_outlined,
+                icon: _reminderDaily
+                    ? Icons.repeat_rounded
+                    : Icons.notifications_active_outlined,
                 label: _reminderAt == null
                     ? 'Custom reminder'
+                    : _reminderDaily
+                    ? 'Daily at ${timeLabel(_reminderAt!)}'
                     : 'Remind ${dateLabel(_reminderAt!)} · '
                           '${timeLabel(_reminderAt!)}',
                 active: _reminderAt != null,
@@ -498,6 +586,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
                     ? null
                     : () => setState(() {
                         _reminderAt = null;
+                        _reminderDaily = false;
                         _reminderNote.clear();
                       }),
               ),
@@ -514,10 +603,25 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
                 prefixIcon: Icon(Icons.notifications_none_rounded, size: 18),
               ),
             ),
+            const SizedBox(height: AppSpace.xs),
+            ToggleRow(
+              label: 'Repeat every day',
+              subtitle: _reminderDaily
+                  ? 'Rings at ${timeLabel(_reminderAt!)} every day.'
+                  : 'Ring at this time each day instead of once.',
+              icon: Icons.repeat_rounded,
+              value: _reminderDaily,
+              onChanged: (value) => _toggleReminderDaily(value),
+            ),
             const SizedBox(height: 5),
             Text(
-              'A custom reminder fires at this exact local time, in addition to '
-              'the start and deadline reminders in Settings.',
+              _reminderDaily
+                  ? 'This repeats every day at the time above. Turn it off in '
+                        'the notification centre if you only want one-off '
+                        'reminders.'
+                  : 'A custom reminder fires at this exact local time, in '
+                        'addition to the start and deadline reminders in '
+                        'Settings.',
               style: AppText.bodySmall.copyWith(
                 color: colors.inkFaint,
                 fontSize: 10.5,

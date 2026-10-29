@@ -57,6 +57,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   List<ActivityEvent> _activity = const [];
   List<TaskAttachment> _attachments = const [];
   bool _historyLoading = true;
+  bool _notesEditing = false;
+  bool _stepsEditing = false;
 
   @override
   void initState() {
@@ -274,6 +276,23 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     });
   }
 
+  Future<void> _openEditor(TaskView view) async {
+    await showTaskEditor(context, existing: view);
+    if (!mounted) return;
+    final updated = ref
+        .read(tasksProvider)
+        .value
+        ?.where((item) => item.task.id == widget.taskId)
+        .firstOrNull;
+    if (updated != null && !_notesDirty && !_notesEditing) {
+      setState(() {
+        _notes.text = updated.task.notesMd;
+        _notesSavedAt = updated.task.updatedAt;
+      });
+    }
+    await _loadHistory();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -314,12 +333,19 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       saving: _savingNotes,
       dirty: _notesDirty,
       savedAt: _notesSavedAt,
+      editing: _notesEditing,
+      onToggleEdit: () {
+        if (_notesEditing) _flushNotes();
+        setState(() => _notesEditing = !_notesEditing);
+      },
       onFlush: _flushNotes,
     );
     final steps = _StepsCard(
       view: view,
       controller: _step,
       focusNode: _stepFocus,
+      editing: _stepsEditing,
+      onToggleEdit: () => setState(() => _stepsEditing = !_stepsEditing),
       onAdd: _addStep,
     );
     final attachments = _AttachmentsCard(
@@ -341,7 +367,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
       view: view,
       liveMs: liveMs,
       timerActive: active,
-      onEdit: () => showTaskEditor(context, existing: view),
+      onEdit: () => _openEditor(view),
       onTimer: () => _toggleTimer(view),
       onStatus: (status) => _changeStatus(view, status),
     );
@@ -354,7 +380,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
             _DetailTopBar(
               view: view,
               onBack: () => Navigator.of(context).maybePop(),
-              onEdit: () => showTaskEditor(context, existing: view),
+              onEdit: () => _openEditor(view),
               onTimer: () => _toggleTimer(view),
               timerActive: active,
               timerRunning: active && (timer?.isRunning ?? false),
@@ -363,57 +389,101 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
               onDelete: () => _delete(view),
             ),
             Expanded(
-              child: PageWidth(
-                maxWidth: 1180,
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.only(bottom: AppSpace.x6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _DetailHeader(
-                        view: view,
-                        onEdit: () => showTaskEditor(context, existing: view),
-                      ),
-                      const SizedBox(height: AppSpace.xxl),
-                      if (wide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+              child: wide
+                  ? PageWidth(
+                      maxWidth: 1180,
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.only(bottom: AppSpace.x6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            _DetailHeader(
+                              view: view,
+                              onEdit: () => _openEditor(view),
+                            ),
+                            const SizedBox(height: AppSpace.xxl),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 7,
+                                  child: Column(
+                                    children: [
+                                      notes,
+                                      const SizedBox(height: AppSpace.lg),
+                                      steps,
+                                      const SizedBox(height: AppSpace.lg),
+                                      attachments,
+                                      const SizedBox(height: AppSpace.lg),
+                                      history,
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpace.x3),
+                                SizedBox(width: 320, child: rail),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : PageWidth(
+                      maxWidth: 820,
+                      padding: EdgeInsets.zero,
+                      child: DefaultTabController(
+                        length: 4,
+                        child: Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppSpace.lg,
+                                AppSpace.sm,
+                                AppSpace.lg,
+                                0,
+                              ),
+                              child: _DetailHeader(
+                                view: view,
+                                onEdit: () => _openEditor(view),
+                              ),
+                            ),
+                            const SizedBox(height: AppSpace.sm),
+                            TabBar(
+                              labelColor: colors.primary,
+                              unselectedLabelColor: colors.inkMuted,
+                              indicatorColor: colors.primary,
+                              dividerColor: colors.line,
+                              labelStyle: AppText.label.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                              tabs: const [
+                                Tab(text: 'Notes'),
+                                Tab(text: 'Steps'),
+                                Tab(text: 'Details'),
+                                Tab(text: 'History'),
+                              ],
+                            ),
                             Expanded(
-                              flex: 7,
-                              child: Column(
+                              child: TabBarView(
                                 children: [
-                                  notes,
-                                  const SizedBox(height: AppSpace.lg),
-                                  steps,
-                                  const SizedBox(height: AppSpace.lg),
-                                  attachments,
-                                  const SizedBox(height: AppSpace.lg),
-                                  history,
+                                  _TabPane(children: [notes]),
+                                  _TabPane(
+                                    children: [
+                                      steps,
+                                      const SizedBox(height: AppSpace.lg),
+                                      attachments,
+                                    ],
+                                  ),
+                                  _TabPane(children: [rail]),
+                                  _TabPane(children: [history]),
                                 ],
                               ),
                             ),
-                            const SizedBox(width: AppSpace.x3),
-                            SizedBox(width: 320, child: rail),
                           ],
-                        )
-                      else ...[
-                        notes,
-                        const SizedBox(height: AppSpace.lg),
-                        steps,
-                        const SizedBox(height: AppSpace.lg),
-                        attachments,
-                        const SizedBox(height: AppSpace.lg),
-                        rail,
-                        const SizedBox(height: AppSpace.lg),
-                        history,
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -763,6 +833,8 @@ class _NotesCard extends StatelessWidget {
     required this.saving,
     required this.dirty,
     required this.savedAt,
+    required this.editing,
+    required this.onToggleEdit,
     required this.onFlush,
   });
 
@@ -771,6 +843,8 @@ class _NotesCard extends StatelessWidget {
   final bool saving;
   final bool dirty;
   final DateTime? savedAt;
+  final bool editing;
+  final VoidCallback onToggleEdit;
   final VoidCallback onFlush;
 
   @override
@@ -789,30 +863,48 @@ class _NotesCard extends StatelessWidget {
                 style: AppText.label.copyWith(color: colors.inkFaint),
               ),
               const Spacer(),
-              Text(
-                saving
-                    ? 'Saving…'
-                    : dirty
-                    ? 'Unsaved'
-                    : savedLabel(savedAt, DateTime.now()),
-                style: AppText.bodySmall.copyWith(
-                  color: dirty ? colors.accent : colors.inkFaint,
-                  fontSize: 11,
+              if (editing) ...[
+                Text(
+                  saving
+                      ? 'Saving…'
+                      : dirty
+                      ? 'Unsaved'
+                      : savedLabel(savedAt, DateTime.now()),
+                  style: AppText.bodySmall.copyWith(
+                    color: dirty ? colors.accent : colors.inkFaint,
+                    fontSize: 11,
+                  ),
                 ),
-              ),
-              if (dirty && !saving) ...[
-                const SizedBox(width: 6),
-                TextButton(onPressed: onFlush, child: const Text('Save now')),
+                if (dirty && !saving) ...[
+                  const SizedBox(width: 6),
+                  TextButton(onPressed: onFlush, child: const Text('Save now')),
+                ],
               ],
+              TextButton.icon(
+                onPressed: onToggleEdit,
+                icon: Icon(
+                  editing ? Icons.done_rounded : Icons.edit_outlined,
+                  size: 15,
+                ),
+                label: Text(editing ? 'Done' : 'Edit'),
+              ),
             ],
           ),
           const SizedBox(height: AppSpace.sm),
-          MarkdownEditor(
-            controller: controller,
-            onChanged: onChanged,
-            minLines: 10,
-            hintText: 'Context, links, decisions, what “done” means. Markdown works here.',
-          ),
+          if (editing)
+            MarkdownEditor(
+              controller: controller,
+              onChanged: onChanged,
+              minLines: 10,
+              hintText:
+                  'Context, links, decisions, what “done” means. Markdown works here.',
+            )
+          else
+            Container(
+              constraints: const BoxConstraints(minHeight: 60),
+              padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+              child: MarkdownView(data: controller.text),
+            ),
         ],
       ),
     );
@@ -824,12 +916,16 @@ class _StepsCard extends StatelessWidget {
     required this.view,
     required this.controller,
     required this.focusNode,
+    required this.editing,
+    required this.onToggleEdit,
     required this.onAdd,
   });
 
   final TaskView view;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final bool editing;
+  final VoidCallback onToggleEdit;
   final Future<void> Function() onAdd;
 
   @override
@@ -857,6 +953,15 @@ class _StepsCard extends StatelessWidget {
                   fontSize: 11,
                 ),
               ),
+              const SizedBox(width: 4),
+              TextButton.icon(
+                onPressed: onToggleEdit,
+                icon: Icon(
+                  editing ? Icons.done_rounded : Icons.edit_outlined,
+                  size: 15,
+                ),
+                label: Text(editing ? 'Done' : 'Edit'),
+              ),
             ],
           ),
           if (view.hasSteps) ...[
@@ -883,21 +988,23 @@ class _StepsCard extends StatelessWidget {
                 ),
               ),
             ),
-          const SizedBox(height: AppSpace.sm),
-          TextField(
-            controller: controller,
-            focusNode: focusNode,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              hintText: 'Add a step…',
-              suffixIcon: IconButton(
-                tooltip: 'Add step',
-                onPressed: onAdd,
-                icon: const Icon(Icons.add_rounded, size: 19),
+          if (editing) ...[
+            const SizedBox(height: AppSpace.sm),
+            TextField(
+              controller: controller,
+              focusNode: focusNode,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Add a step…',
+                suffixIcon: IconButton(
+                  tooltip: 'Add step',
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add_rounded, size: 19),
+                ),
               ),
+              onSubmitted: (_) => onAdd(),
             ),
-            onSubmitted: (_) => onAdd(),
-          ),
+          ],
         ],
       ),
     );
@@ -1210,11 +1317,14 @@ class _DetailRail extends ConsumerWidget {
                 ),
               if (view.task.reminderAt != null)
                 _DetailRow(
-                  icon: Icons.notifications_active_outlined,
+                  icon: view.task.reminderDaily
+                      ? Icons.repeat_rounded
+                      : Icons.notifications_active_outlined,
                   label: 'Reminder',
-                  value:
-                      '${dateLabel(view.task.reminderAt!)} · '
-                      '${timeLabel(view.task.reminderAt!)}',
+                  value: view.task.reminderDaily
+                      ? 'Every day · ${timeLabel(view.task.reminderAt!)}'
+                      : '${dateLabel(view.task.reminderAt!)} · '
+                            '${timeLabel(view.task.reminderAt!)}',
                   color: colors.accent,
                 ),
             ],
@@ -1633,6 +1743,26 @@ class _HistoryCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _TabPane extends StatelessWidget {
+  const _TabPane({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.lg,
+        AppSpace.lg,
+        AppSpace.lg,
+        AppSpace.x6,
+      ),
+      children: children,
     );
   }
 }

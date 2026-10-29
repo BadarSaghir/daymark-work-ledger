@@ -79,7 +79,7 @@ class BackupService {
 
   static const format = 'daymark.backup';
   static const formatVersion = 1;
-  static const appVersion = '1.4.0';
+  static const appVersion = '1.5.0';
   static const maxImportBytes = 100 * 1024 * 1024;
 
   static const _tables = <String>[
@@ -127,6 +127,7 @@ class BackupService {
       'updated_at',
       'reminder_at',
       'reminder_note',
+      'reminder_daily',
     },
     'subtasks': {
       'id',

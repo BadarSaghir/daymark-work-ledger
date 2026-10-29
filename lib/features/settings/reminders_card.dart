@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/ui/feedback.dart';
@@ -9,7 +10,8 @@ import '../../core/ui/surface_card.dart';
 import '../../data/services/notification_service.dart';
 import '../../state/notification_controller.dart';
 
-/// Offline reminders scheduled by the operating system from the local ledger.
+/// A compact reminder status card for Settings. The full control surface lives
+/// in the dedicated [NotificationsPage], reachable from here and the app bar.
 class RemindersCard extends ConsumerStatefulWidget {
   const RemindersCard({super.key});
 
@@ -20,6 +22,12 @@ class RemindersCard extends ConsumerStatefulWidget {
 class _RemindersCardState extends ConsumerState<RemindersCard> {
   bool _busy = false;
   int? _pending;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshPending());
+  }
 
   Future<T?> _run<T>(String label, Future<T> Function() action) async {
     setState(() => _busy = true);
@@ -42,30 +50,15 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
   }
 
   Future<void> _reschedule() async {
-    final count = await _run<int>(
+    final report = await _run<NotificationSyncReport>(
       'Rescheduling',
       () => ref.read(reminderControllerProvider.notifier).syncNow(),
     );
-    if (count == null || !mounted) return;
+    if (report == null || !mounted) return;
     showToast(
       context,
-      count == 0
-          ? 'Nothing to schedule yet. Add a start time or deadline to a task.'
-          : '$count reminders scheduled',
-    );
-  }
-
-  Future<void> _requestPermission() async {
-    final granted = await _run<bool>(
-      'Permission request',
-      () => ref.read(reminderControllerProvider.notifier).requestPermission(),
-    );
-    if (granted == null || !mounted) return;
-    showToast(
-      context,
-      granted
-          ? 'Notification permission is granted'
-          : 'Notifications are still blocked for Daymark',
+      report.summary,
+      duration: const Duration(seconds: 4),
     );
   }
 
@@ -91,39 +84,28 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
           context,
           'Notifications are blocked. Allow them for Daymark in your system '
           'settings, then try again.',
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 6),
         );
       } else if (mounted) {
-        showToast(context, 'Offline reminders are on');
+        showToast(context, 'Notifications are on');
       }
       await _refreshPending();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not enable reminders: $error');
+      if (mounted) {
+        showToast(context, 'Could not enable notifications: $error');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _save(ReminderPreferences next) async {
+  Future<void> _save(ReminderPreferences next, {String? message}) async {
     await _run(
       'Updating reminders',
-      () => ref.read(reminderControllerProvider.notifier).savePreferences(next),
+      () =>
+          ref.read(reminderControllerProvider.notifier).savePreferences(next),
     );
-  }
-
-  Future<void> _pickReviewTime(ReminderPreferences prefs) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
-        hour: prefs.reviewHour,
-        minute: prefs.reviewMinute,
-      ),
-      helpText: 'Daily closing note',
-    );
-    if (picked == null) return;
-    await _save(
-      prefs.copyWith(reviewHour: picked.hour, reviewMinute: picked.minute),
-    );
+    if (message != null && mounted) showToast(context, message);
   }
 
   @override
@@ -157,7 +139,7 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Offline reminders',
+                      'Notifications',
                       style: AppText.titleM.copyWith(
                         color: colors.ink,
                         fontSize: 16,
@@ -165,8 +147,8 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Scheduled on this device. Start, deadline, and custom '
-                      'task reminders arrive without a network or account.',
+                      'Scheduled on this device. Start, deadline, custom, and '
+                      'daily task reminders arrive without a network.',
                       style: AppText.bodySmall.copyWith(
                         color: colors.inkFaint,
                         fontSize: 10.8,
@@ -193,7 +175,7 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    '$_pending scheduled',
+                    '$_pending queued',
                     style: AppText.monoData.copyWith(
                       color: colors.primary,
                       fontSize: 8.5,
@@ -206,7 +188,7 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
           async.when(
             loading: () => const LinearProgressIndicator(minHeight: 2),
             error: (error, stack) => InlineError(
-              message: 'Could not read reminder settings: $error',
+              message: 'Could not read notification settings: $error',
               onRetry: () {
                 ref.invalidate(reminderControllerProvider);
                 _refreshPending();
@@ -214,26 +196,38 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
             ),
             data: (prefs) => !prefs.enabled
                 ? _DisabledPrompt(busy: _busy, onEnable: _enable)
-                : _EnabledSettings(
+                : _EnabledSummary(
                     prefs: prefs,
-                    busy: _busy,
                     pending: _pending,
-                    onDisable: () => _save(prefs.copyWith(enabled: false)),
-                    onTaskReminders: (value) =>
-                        _save(prefs.copyWith(taskReminders: value)),
-                    onDailyReview: (value) =>
-                        _save(prefs.copyWith(dailyReview: value)),
-                    onLead: (value) =>
-                        _save(prefs.copyWith(leadMinutes: value)),
-                    onPickTime: () => _pickReviewTime(prefs),
+                    busy: _busy,
+                    onOpen: () => openNotifications(context),
                     onReschedule: _reschedule,
-                    onTest: () => _run(
+                    onTest: () => _run<void>(
                       'Test notification',
                       () => ref
                           .read(reminderControllerProvider.notifier)
                           .sendTest(),
                     ),
-                    onPermission: _requestPermission,
+                    onTaskReminders: (value) => _save(
+                      prefs.copyWith(taskReminders: value),
+                      message: value
+                          ? 'Task reminders on'
+                          : 'Task reminders off',
+                    ),
+                    onDailyReview: (value) => _save(
+                      prefs.copyWith(dailyReview: value),
+                      message: value
+                          ? 'Daily closing note on'
+                          : 'Daily closing note off',
+                    ),
+                    onLead: (value) => _save(
+                      prefs.copyWith(leadMinutes: value),
+                      message: 'Lead time updated',
+                    ),
+                    onDisable: () => _save(
+                      prefs.copyWith(enabled: false),
+                      message: 'Notifications turned off',
+                    ),
                   ),
           ),
         ],
@@ -261,15 +255,21 @@ class _DisabledPrompt extends StatelessWidget {
         ),
         const SizedBox(height: AppSpace.sm),
         _PreviewNote(
+          title: 'Daily reminder · Water the plants',
+          body: 'Repeats every day at 8:00 AM',
+          icon: Icons.repeat_rounded,
+        ),
+        const SizedBox(height: AppSpace.sm),
+        _PreviewNote(
           title: 'Close the day',
           body: 'A few minutes to mark what moved and what stalled.',
           icon: Icons.nightlight_outlined,
         ),
         const SizedBox(height: AppSpace.md),
         Text(
-          'Task starts, deadlines, custom reminders, and a daily closing note '
-          'are all computed from your ledger. Nothing leaves the device. On '
-          'Linux, keep Daymark open so it can ring reminders itself.',
+          'Start, deadline, custom, and daily task reminders plus a daily '
+          'closing note are all computed from your ledger. Nothing leaves the '
+          'device.',
           style: AppText.bodySmall.copyWith(
             color: colors.inkMuted,
             fontSize: 10.8,
@@ -277,13 +277,21 @@ class _DisabledPrompt extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpace.md),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            onPressed: busy ? null : onEnable,
-            icon: const Icon(Icons.notifications_active_outlined, size: 17),
-            label: const Text('Turn on reminders'),
-          ),
+        Wrap(
+          spacing: AppSpace.sm,
+          runSpacing: AppSpace.sm,
+          children: [
+            FilledButton.icon(
+              onPressed: busy ? null : onEnable,
+              icon: const Icon(Icons.notifications_active_outlined, size: 17),
+              label: const Text('Turn on notifications'),
+            ),
+            TextButton.icon(
+              onPressed: () => openNotifications(context),
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('Open notification centre'),
+            ),
+          ],
         ),
       ],
     );
@@ -355,32 +363,30 @@ class _PreviewNote extends StatelessWidget {
   }
 }
 
-class _EnabledSettings extends StatelessWidget {
-  const _EnabledSettings({
+class _EnabledSummary extends StatelessWidget {
+  const _EnabledSummary({
     required this.prefs,
-    required this.busy,
     required this.pending,
-    required this.onDisable,
+    required this.busy,
+    required this.onOpen,
+    required this.onReschedule,
+    required this.onTest,
     required this.onTaskReminders,
     required this.onDailyReview,
     required this.onLead,
-    required this.onPickTime,
-    required this.onReschedule,
-    required this.onTest,
-    required this.onPermission,
+    required this.onDisable,
   });
 
   final ReminderPreferences prefs;
-  final bool busy;
   final int? pending;
-  final VoidCallback onDisable;
+  final bool busy;
+  final VoidCallback onOpen;
+  final VoidCallback onReschedule;
+  final VoidCallback onTest;
   final ValueChanged<bool> onTaskReminders;
   final ValueChanged<bool> onDailyReview;
   final ValueChanged<int> onLead;
-  final VoidCallback onPickTime;
-  final VoidCallback onReschedule;
-  final VoidCallback onTest;
-  final VoidCallback onPermission;
+  final VoidCallback onDisable;
 
   @override
   Widget build(BuildContext context) {
@@ -407,7 +413,9 @@ class _EnabledSettings extends StatelessWidget {
               const SizedBox(width: AppSpace.sm),
               Expanded(
                 child: Text(
-                  'Active on this device · works without a connection',
+                  'Active on this device · '
+                  '${pending ?? 0} notification'
+                  '${(pending ?? 0) == 1 ? '' : 's'} queued',
                   style: AppText.bodySmall.copyWith(
                     color: colors.primary,
                     fontSize: 10.5,
@@ -424,15 +432,15 @@ class _EnabledSettings extends StatelessWidget {
           value: prefs.taskReminders,
           onChanged: busy ? null : onTaskReminders,
           title: Text(
-            'Task starts, deadlines & custom reminders',
+            'Task reminders',
             style: AppText.bodySmall.copyWith(
               color: colors.ink,
               fontWeight: FontWeight.w700,
             ),
           ),
           subtitle: Text(
-            'Custom reminders use the exact date and time set in the task '
-            'editor. Start and deadline nudges use the lead time below.',
+            'Start, deadline, custom, and daily task reminders. Fine-tune each '
+            'type in the notification centre.',
             style: AppText.bodySmall.copyWith(
               color: colors.inkFaint,
               fontSize: 10.5,
@@ -461,7 +469,9 @@ class _EnabledSettings extends StatelessWidget {
               onChanged: busy || !prefs.taskReminders
                   ? null
                   : (next) {
-                      if (next != null) onLead(next);
+                      if (next != null) {
+                        onLead(next);
+                      }
                     },
             ),
           ],
@@ -479,64 +489,38 @@ class _EnabledSettings extends StatelessWidget {
             ),
           ),
           subtitle: Text(
-            'One quiet nudge to review the day.',
+            'One quiet nudge to review the day · ${prefs.reviewLabel}.',
             style: AppText.bodySmall.copyWith(
               color: colors.inkFaint,
               fontSize: 10.5,
             ),
           ),
         ),
-        if (prefs.dailyReview)
-          Row(
-            children: [
-              Text(
-                'Remind me at',
-                style: AppText.bodySmall.copyWith(color: colors.inkMuted),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: busy ? null : onPickTime,
-                icon: const Icon(Icons.schedule_rounded, size: 15),
-                label: Text(prefs.reviewLabel),
-              ),
-            ],
-          ),
         const SizedBox(height: AppSpace.sm),
         Wrap(
           spacing: AppSpace.sm,
           runSpacing: AppSpace.sm,
           children: [
             FilledButton.tonalIcon(
-              onPressed: busy ? null : onReschedule,
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('Reschedule'),
+              onPressed: busy ? null : onOpen,
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('Open notification centre'),
             ),
             OutlinedButton.icon(
               onPressed: busy ? null : onTest,
-              icon: const Icon(Icons.notifications_outlined, size: 16),
+              icon: const Icon(Icons.notifications_active_outlined, size: 16),
               label: const Text('Send a test'),
             ),
-            TextButton(
-              onPressed: busy ? null : onPermission,
-              child: const Text('Permission'),
+            TextButton.icon(
+              onPressed: busy ? null : onReschedule,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Reschedule'),
             ),
             TextButton(
               onPressed: busy ? null : onDisable,
               child: const Text('Turn off'),
             ),
           ],
-        ),
-        const SizedBox(height: AppSpace.sm),
-        Text(
-          'Timing is handled by the OS and may be adjusted by battery saver. '
-          'Daymark never uses exact alarms. Linux has no offline scheduler in '
-          'the notification plugin, so Daymark checks every few seconds while '
-          'open. Reminders refresh whenever the ledger changes and on launch.',
-          style: AppText.bodySmall.copyWith(
-            color: colors.inkFaint,
-            fontSize: 9.8,
-            height: 1.45,
-          ),
         ),
       ],
     );

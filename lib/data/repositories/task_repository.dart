@@ -115,6 +115,7 @@ class TaskRepository {
     DateTime? dueAt,
     DateTime? reminderAt,
     String? reminderNote,
+    bool reminderDaily = false,
     String notesMd = '',
     List<String> stepTitles = const [],
   }) async {
@@ -141,6 +142,7 @@ class TaskRepository {
       updatedAt: now,
       reminderAt: reminderAt,
       reminderNote: reminderNote,
+      reminderDaily: reminderDaily,
     );
     await _db.transaction((txn) async {
       await txn.insert('tasks', task.toMap());

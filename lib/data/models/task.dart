@@ -25,6 +25,7 @@ class Task {
     required this.updatedAt,
     this.reminderAt,
     this.reminderNote,
+    this.reminderDaily = false,
   });
 
   static const Object _unset = Object();
@@ -57,6 +58,22 @@ class Task {
   final DateTime? reminderAt;
   final String? reminderNote;
 
+  /// When true, [reminderAt] describes a time of day and the reminder repeats
+  /// every day instead of firing once.
+  final bool reminderDaily;
+
+  /// The next time this task's custom reminder should ring.
+  DateTime? nextReminderFrom(DateTime now) {
+    final at = reminderAt;
+    if (at == null) return null;
+    if (!reminderDaily) return at.isAfter(now) ? at : null;
+    var next = DateTime(now.year, now.month, now.day, at.hour, at.minute);
+    if (!next.isAfter(now)) {
+      next = DateTime(now.year, now.month, now.day + 1, at.hour, at.minute);
+    }
+    return next;
+  }
+
   bool get isDone => status == TaskStatus.done;
   bool get isScheduled => plannedDate != null;
 
@@ -83,6 +100,7 @@ class Task {
     DateTime? updatedAt,
     Object? reminderAt = _unset,
     Object? reminderNote = _unset,
+    bool? reminderDaily,
   }) {
     return Task(
       id: id,
@@ -124,6 +142,7 @@ class Task {
       reminderNote: identical(reminderNote, _unset)
           ? this.reminderNote
           : reminderNote as String?,
+      reminderDaily: reminderDaily ?? this.reminderDaily,
     );
   }
 
@@ -150,6 +169,7 @@ class Task {
       updatedAt: dateFromMs(map['updated_at']) ?? DateTime.now(),
       reminderAt: dateFromMs(map['reminder_at']),
       reminderNote: map['reminder_note'] as String?,
+      reminderDaily: boolFromDb(map['reminder_daily']),
     );
   }
 
@@ -176,6 +196,7 @@ class Task {
       'updated_at': msFromDate(updatedAt),
       'reminder_at': msFromDate(reminderAt),
       'reminder_note': reminderNote,
+      'reminder_daily': reminderDaily ? 1 : 0,
     };
   }
 }

@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../../app/routes.dart';
 import '../../core/theme/app_colors.dart';
@@ -98,13 +97,6 @@ class SettingsPage extends ConsumerWidget {
     const drive = GoogleDriveCard();
     const reminders = RemindersCard();
 
-    final data = _SettingsCard(
-      title: 'Data',
-      subtitle: 'Demo content for exploring; a clean reset for a new season.',
-      icon: Icons.storage_outlined,
-      child: const _DataPanel(),
-    );
-
     final about = _SettingsCard(
       title: 'About Daymark',
       subtitle: 'Every effort, marked.',
@@ -165,22 +157,16 @@ class SettingsPage extends ConsumerWidget {
           sheetChild: drive,
         ),
         _SettingsMenuEntry(
-          title: 'Reminders',
-          summary: 'Gentle nudges for open loops',
+          title: 'Notifications',
+          summary: 'Reminder settings, schedule, and device tests',
           icon: Icons.notifications_none_rounded,
           tone: colors.gold,
+          opensNotifications: true,
           sheetChild: reminders,
         ),
         _SettingsMenuEntry(
-          title: 'Data',
-          summary: 'Load a demo or reset the workspace',
-          icon: Icons.storage_outlined,
-          tone: colors.rose,
-          sheetChild: data.embeddedCopy(),
-        ),
-        _SettingsMenuEntry(
           title: 'About Daymark',
-          summary: 'Version 1.4.0 · local only',
+          summary: 'Version 1.5.0 · local only',
           icon: Icons.info_outline_rounded,
           tone: colors.inkMuted,
           sheetChild: about.embeddedCopy(),
@@ -188,6 +174,10 @@ class SettingsPage extends ConsumerWidget {
       ];
 
       void openSection(_SettingsMenuEntry entry) {
+        if (entry.opensNotifications) {
+          openNotifications(context);
+          return;
+        }
         showAppSheet<void>(
           context,
           (sheetContext) => _SettingsSheetBody(
@@ -227,22 +217,22 @@ class SettingsPage extends ConsumerWidget {
               ),
               _SettingsMenuGroup(
                 label: 'Archive',
-                entries: entries.sublist(4, 7),
+                entries: entries.sublist(4, 6),
                 onOpen: openSection,
               ),
               _SettingsMenuGroup(
                 label: 'Workspace',
-                entries: entries.sublist(7, 8),
+                entries: entries.sublist(6, 7),
                 onOpen: openSection,
               ),
               _SettingsMenuGroup(
                 label: 'About',
-                entries: entries.sublist(8),
+                entries: entries.sublist(7),
                 onOpen: openSection,
               ),
               const SizedBox(height: AppSpace.xl),
               Text(
-                'Daymark 1.4.0 · every effort, marked',
+                'Daymark 1.5.0 · every effort, marked',
                 textAlign: TextAlign.center,
                 style: AppText.bodySmall.copyWith(
                   color: colors.inkFaint,
@@ -306,8 +296,6 @@ class SettingsPage extends ConsumerWidget {
                         const SizedBox(height: AppSpace.lg),
                         reminders,
                         const SizedBox(height: AppSpace.lg),
-                        data,
-                        const SizedBox(height: AppSpace.lg),
                         about,
                       ],
                     ),
@@ -330,8 +318,6 @@ class SettingsPage extends ConsumerWidget {
                   drive,
                   const SizedBox(height: AppSpace.lg),
                   reminders,
-                  const SizedBox(height: AppSpace.lg),
-                  data,
                   const SizedBox(height: AppSpace.lg),
                   about,
                 ],
@@ -362,6 +348,7 @@ class _SettingsMenuEntry {
     required this.icon,
     required this.tone,
     required this.sheetChild,
+    this.opensNotifications = false,
   });
 
   final String title;
@@ -369,6 +356,7 @@ class _SettingsMenuEntry {
   final IconData icon;
   final Color tone;
   final Widget sheetChild;
+  final bool opensNotifications;
 }
 
 /// Groups tappable summary rows so the phone settings screen stays one screen
@@ -1212,179 +1200,6 @@ class _BackupPanelState extends ConsumerState<_BackupPanel> {
   }
 }
 
-class _DataPanel extends ConsumerStatefulWidget {
-  const _DataPanel();
-
-  @override
-  ConsumerState<_DataPanel> createState() => _DataPanelState();
-}
-
-class _DataPanelState extends ConsumerState<_DataPanel> {
-  bool _busy = false;
-  String? _busyLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return Column(
-      children: [
-        if (_busy && _busyLabel != null) ...[
-          Row(
-            children: [
-              const SizedBox(
-                width: 13,
-                height: 13,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                _busyLabel!,
-                style: AppText.bodySmall.copyWith(
-                  color: colors.inkFaint,
-                  fontSize: 10.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpace.md),
-        ],
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(
-            Icons.auto_awesome_outlined,
-            size: 19,
-            color: colors.gold,
-          ),
-          title: Text(
-            'Load the demo workspace',
-            style: AppText.bodyMedium.copyWith(color: colors.ink),
-          ),
-          subtitle: Text(
-            'Replaces current data with realistic tasks, notes, and time.',
-            style: AppText.bodySmall.copyWith(
-              color: colors.inkFaint,
-              fontSize: 10.8,
-            ),
-          ),
-          onTap: _busy ? null : _loadDemo,
-        ),
-        Divider(color: colors.line),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(
-            Icons.restart_alt_rounded,
-            size: 19,
-            color: colors.rose,
-          ),
-          title: Text(
-            'Reset the workspace',
-            style: AppText.bodyMedium.copyWith(color: colors.ink),
-          ),
-          subtitle: Text(
-            'Removes tasks, steps, time, journals, and activity. Categories '
-            'and backups remain.',
-            style: AppText.bodySmall.copyWith(
-              color: colors.inkFaint,
-              fontSize: 10.8,
-            ),
-          ),
-          onTap: _busy ? null : _resetWorkspace,
-        ),
-      ],
-    );
-  }
-
-  Future<T?> _withBusy<T>(String label, Future<T> Function() action) async {
-    setState(() {
-      _busy = true;
-      _busyLabel = label;
-    });
-    try {
-      return await action();
-    } catch (error) {
-      if (mounted) showToast(context, '$error');
-      return null;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _busyLabel = null;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadDemo() async {
-    final confirmed = await showConfirmDialog(
-      context,
-      title: 'Load the demo workspace?',
-      message:
-          'This replaces tasks, steps, time, journals, and categories with a '
-          'realistic demo. Back up first if you want to keep the current state.',
-      confirmLabel: 'Load demo',
-      icon: Icons.auto_awesome_outlined,
-    );
-    if (!confirmed) return;
-    final loaded = await _withBusy<bool>('Loading demo…', () async {
-      await ref.read(demoServiceProvider).load();
-      final attachments = await ref.read(taskAttachmentServiceProvider.future);
-      await attachments.deleteAllFiles();
-      return true;
-    });
-    if (loaded != true) return;
-    _refreshEverything();
-    if (mounted) showToast(context, 'Demo workspace loaded');
-  }
-
-  Future<void> _resetWorkspace() async {
-    final confirmed = await showConfirmDialog(
-      context,
-      title: 'Reset the workspace?',
-      message:
-          'This removes all tasks, steps, attached files, time entries, '
-          'journals, and activity. Categories and backup files are kept. You '
-          'will return to setup.',
-      confirmLabel: 'Erase data',
-      danger: true,
-      icon: Icons.restart_alt_rounded,
-    );
-    if (!confirmed) return;
-    final done = await _withBusy('Erasing…', () async {
-      final db = ref.read(databaseProvider).db;
-      await ref.read(timerProvider.notifier).discard();
-      await db.transaction((txn) async {
-        await txn.delete('time_entries');
-        await txn.delete('subtasks');
-        await txn.delete('tasks');
-        await txn.delete('journal_entries');
-        await txn.delete('activity_events');
-        await txn.delete('timer_sessions');
-        for (final entry in AppSettings.defaults.toMap().entries) {
-          await txn.insert('settings', {
-            'key': entry.key,
-            'value': entry.value,
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
-        }
-      });
-      final attachments = await ref.read(taskAttachmentServiceProvider.future);
-      await attachments.deleteAllFiles();
-      return true;
-    });
-    if (done != true) return;
-    _refreshEverything();
-  }
-
-  void _refreshEverything() {
-    ref.invalidate(settingsProvider);
-    ref.invalidate(categoriesProvider);
-    ref.invalidate(tasksProvider);
-    ref.invalidate(journalProvider);
-    ref.invalidate(timerProvider);
-    ref.invalidate(backupListProvider);
-    invalidateStatsWidget(ref);
-  }
-}
-
 class _AboutPanel extends StatelessWidget {
   const _AboutPanel();
 
@@ -1393,7 +1208,7 @@ class _AboutPanel extends StatelessWidget {
     final colors = context.colors;
     return Column(
       children: [
-        _AboutRow(label: 'Version', value: '1.4.0'),
+        _AboutRow(label: 'Version', value: '1.5.0'),
         _AboutRow(label: 'Schema', value: 'v${Migrations.latestVersion}'),
         _AboutRow(
           label: 'Backup format',

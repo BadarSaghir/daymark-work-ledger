@@ -4,6 +4,51 @@ All notable changes to Daymark are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 semantic versioning once it reaches a public release.
 
+## [1.5.0] - 2026-10-29
+
+### Added
+
+- A notification centre with four tabs: **Settings** for channels and timing,
+  **Upcoming** for the next scheduled reminders, **Custom** for one-off
+  reminders, and **Test** for sending a notification immediately.
+- Per-task reminders that repeat daily at a chosen time, alongside the existing
+  start, deadline, review, and closing-note reminders.
+- A single **Send test notification** action so notification permissions,
+  channels, and sound can be verified without waiting for a task.
+- An **Allow exact timing** flow on Android, with automatic fallback to inexact
+  alarms when exact alarms are not permitted.
+- A read-only task detail view with an explicit **Edit** and **Done** toggle, so
+  viewing and editing are clearly separate.
+
+### Changed
+
+- Notification scheduling was rebuilt around a single plan-and-sync pipeline.
+  Reminders are recalculated on launch, on resume, after task changes, on
+  settings changes, and every fifteen minutes.
+- Task reminders, custom reminders, and test notifications use separate Android
+  channels. Syncing tasks only cancels Daymark-managed task and review
+  notifications, so standalone custom and test notifications are preserved.
+- Notification plugin failures are reported as readable status text in the
+  notification centre instead of surfacing as raw `PlatformException` errors.
+- Compact screens now use tabs in the task detail (Notes, Steps, Details,
+  History) and in the Planner board (one tab per column) to avoid long
+  page-level scrolling.
+- The demo and reset-data controls were removed from Settings; onboarding still
+  provides its own sample data.
+- Version is now `1.5.0+6`.
+
+### Fixed
+
+- Turning on reminders on Android no longer throws `PlatformException`; missing
+  permission, disabled exact alarms, and unsupported platforms fall back
+  gracefully.
+- Daily and custom reminders fire reliably on real Android and iOS devices,
+  including after a restart, because they are re-projected during every sync.
+- iOS notification callbacks now reach the app through a configured
+  `UNUserNotificationCenter` delegate.
+- Android now declares the exact-alarm and vibrate permissions needed for
+  reliable reminder delivery.
+
 ## [1.4.0] - 2026-10-28
 
 ### Added

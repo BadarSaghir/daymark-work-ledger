@@ -112,14 +112,15 @@ class ToggleRow extends StatelessWidget {
   final String label;
   final String? subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
   final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final enabled = onChanged != null;
     return InkWell(
-      onTap: () => onChanged(!value),
+      onTap: enabled ? () => onChanged!(!value) : null,
       borderRadius: BorderRadius.circular(AppRadius.input),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

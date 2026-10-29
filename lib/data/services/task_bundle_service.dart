@@ -64,7 +64,7 @@ class TaskBundleService {
 
   static const format = 'daymark.task';
   static const formatVersion = 1;
-  static const appVersion = '1.4.0';
+  static const appVersion = '1.5.0';
   static const maxBytes = 100 * 1024 * 1024;
   static const maxAttachmentBytes = 90 * 1024 * 1024;
 
@@ -92,6 +92,7 @@ class TaskBundleService {
     'updated_at',
     'reminder_at',
     'reminder_note',
+    'reminder_daily',
   };
 
   static const _categoryColumns = <String>{
@@ -762,6 +763,7 @@ class TaskBundleService {
       ..writeln('planned: ${task['planned_date'] ?? ''}')
       ..writeln('due: ${_isoFromMs(task['due_at'])}')
       ..writeln('reminder: ${_isoFromMs(task['reminder_at'])}')
+      ..writeln('reminder repeats daily: ${task['reminder_daily'] == 1}')
       ..writeln('---')
       ..writeln()
       ..writeln('# $title')

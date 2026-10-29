@@ -34,7 +34,8 @@ import '../../state/ui_state.dart';
 import '../../widgets/quick_capture.dart';
 import '../../widgets/task_editor.dart';
 import '../../widgets/timer_pill.dart';
-import '../nav.dart';
+import '../../app/nav.dart';
+import '../../app/routes.dart';
 import 'command_palette.dart';
 
 String _initialFor(String name) {
@@ -50,14 +51,17 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell>
+    with WidgetsBindingObserver {
   Timer? _reminderDebounce;
   Timer? _reminderPulse;
+  Timer? _reminderRefresh;
   ProviderSubscription<AsyncValue<List<TaskView>>>? _taskSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _autoBackup();
       _syncReminders();
@@ -70,12 +74,28 @@ class _AppShellState extends ConsumerState<AppShell> {
       const Duration(seconds: 20),
       (_) => _pumpReminders(),
     );
+    // Rebuild the OS schedule periodically. This catches timezone changes,
+    // clock changes, and reminders that an OEM dropped while the app was alive.
+    _reminderRefresh = Timer.periodic(
+      const Duration(minutes: 15),
+      (_) => _syncReminders(),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _queueReminderSync();
+      _pumpReminders();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reminderDebounce?.cancel();
     _reminderPulse?.cancel();
+    _reminderRefresh?.cancel();
     _taskSubscription?.close();
     super.dispose();
   }
@@ -235,6 +255,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   index: index,
                   displayName: settings?.displayName ?? '',
                   onSearch: _openPalette,
+                  onNotifications: () => openNotifications(context),
                   onAccount: () => showLocalAccountSwitcher(context),
                 )
               : null,
@@ -249,6 +270,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   onCapture: _capture,
                   onNewTask: _openTaskEditor,
                   onPalette: _openPalette,
+                  onNotifications: () => openNotifications(context),
                   onAccount: () => showLocalAccountSwitcher(context),
                 )
               else if (!compact)
@@ -257,6 +279,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   openToday: openToday,
                   onGo: _go,
                   onPalette: _openPalette,
+                  onNotifications: () => openNotifications(context),
                 ),
               Expanded(
                 child: Stack(
@@ -368,6 +391,17 @@ class _AppShellState extends ConsumerState<AppShell> {
                 _openTaskEditor();
               },
             ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              minTileHeight: 54,
+              leading: const Icon(Icons.notifications_none_rounded, size: 21),
+              title: const Text('Notifications'),
+              subtitle: const Text('Reminder settings, schedule, and tests'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                openNotifications(context);
+              },
+            ),
             Divider(color: sheetContext.colors.line),
             const SizedBox(height: AppSpace.sm),
             for (final (target, icon, label) in items)
@@ -394,12 +428,14 @@ class _MobileAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.index,
     required this.displayName,
     required this.onSearch,
+    required this.onNotifications,
     required this.onAccount,
   });
 
   final int index;
   final String displayName;
   final VoidCallback onSearch;
+  final VoidCallback onNotifications;
   final VoidCallback onAccount;
 
   @override
@@ -454,6 +490,11 @@ class _MobileAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                tooltip: 'Notifications',
+                onPressed: onNotifications,
+                icon: const Icon(Icons.notifications_none_rounded, size: 23),
               ),
               IconButton(
                 tooltip: 'Search',
@@ -736,6 +777,7 @@ class _Sidebar extends StatelessWidget {
     required this.onCapture,
     required this.onNewTask,
     required this.onPalette,
+    required this.onNotifications,
     required this.onAccount,
   });
 
@@ -746,6 +788,7 @@ class _Sidebar extends StatelessWidget {
   final VoidCallback onCapture;
   final VoidCallback onNewTask;
   final VoidCallback onPalette;
+  final VoidCallback onNotifications;
   final VoidCallback onAccount;
 
   @override
@@ -889,6 +932,12 @@ class _Sidebar extends StatelessWidget {
                     onTap: () => onGo(NavTarget.categories),
                   ),
                   _SidebarItem(
+                    label: 'Notifications',
+                    icon: Icons.notifications_none_rounded,
+                    selected: false,
+                    onTap: onNotifications,
+                  ),
+                  _SidebarItem(
                     label: 'Settings',
                     icon: Icons.settings_outlined,
                     selected: index == NavTarget.settings,
@@ -985,12 +1034,14 @@ class _Rail extends StatelessWidget {
     required this.openToday,
     required this.onGo,
     required this.onPalette,
+    required this.onNotifications,
   });
 
   final int index;
   final int openToday;
   final ValueChanged<int> onGo;
   final VoidCallback onPalette;
+  final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -1070,6 +1121,11 @@ class _Rail extends StatelessWidget {
               tooltip: 'Nearby & sync',
               selected: index == NavTarget.nearby,
               onTap: () => onGo(NavTarget.nearby),
+            ),
+            _RailButton(
+              icon: Icons.notifications_none_rounded,
+              tooltip: 'Notifications',
+              onTap: onNotifications,
             ),
             _RailButton(
               icon: Icons.settings_outlined,

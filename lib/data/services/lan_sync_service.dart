@@ -674,7 +674,7 @@ class LanSyncService {
         'platform': Platform.operatingSystem,
         'port': port,
         'pinRequired': true,
-        'version': '1.4.0',
+        'version': '1.5.0',
       });
       return;
     }
