@@ -221,7 +221,8 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
                             .toList()
                           ..sort(_sortTasks),
                     dropStatus: TaskStatus.planned,
-                    onDrop: (taskId) => _moveToDay(ref, views, taskId, selected),
+                    onDrop: (taskId) =>
+                        _moveToDay(ref, views, taskId, selected),
                     onAdd: () =>
                         showQuickCapture(context, plannedDate: selected),
                   ),
@@ -351,9 +352,12 @@ class _PlannerPageState extends ConsumerState<PlannerPage> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (var index = 0; index < columns.length; index++) ...[
-                          if (index > 0)
-                            const SizedBox(width: AppSpace.md),
+                        for (
+                          var index = 0;
+                          index < columns.length;
+                          index++
+                        ) ...[
+                          if (index > 0) const SizedBox(width: AppSpace.md),
                           columns[index],
                         ],
                       ],
@@ -906,10 +910,7 @@ class _BoardColumn extends StatelessWidget {
               const SizedBox(height: AppSpace.sm),
               if (fluid)
                 Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: cards,
-                  ),
+                  child: ListView(padding: EdgeInsets.zero, children: cards),
                 )
               else
                 ...cards,

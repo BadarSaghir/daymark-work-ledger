@@ -118,9 +118,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 
   Future<void> _save(ReminderPreferences next, {String? message}) async {
     await _guard(
-      () => ref
-          .read(reminderControllerProvider.notifier)
-          .savePreferences(next),
+      () => ref.read(reminderControllerProvider.notifier).savePreferences(next),
       success: message,
     );
   }
@@ -167,13 +165,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     final date = _customDate;
     final time = _customTime;
     if (date == null || time == null) return null;
-    return DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
-    );
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
   Future<void> _scheduleCustom() async {
@@ -235,10 +227,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     await _guard(
       () => ref
           .read(reminderControllerProvider.notifier)
-          .sendTest(
-            title: _testTitle.text,
-            body: _testBody.text,
-          ),
+          .sendTest(title: _testTitle.text, body: _testBody.text),
       success: 'Test notification sent',
     );
   }
@@ -288,9 +277,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
 
   Future<void> _requestExact() async {
     final granted = await _guard(
-      () => ref
-          .read(reminderControllerProvider.notifier)
-          .requestExactAlarms(),
+      () => ref.read(reminderControllerProvider.notifier).requestExactAlarms(),
     );
     if (granted != null && mounted) {
       showToast(
@@ -323,8 +310,14 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
             indicatorColor: colors.primary,
             tabs: const [
               Tab(icon: Icon(Icons.tune_rounded, size: 18), text: 'Settings'),
-              Tab(icon: Icon(Icons.schedule_rounded, size: 18), text: 'Upcoming'),
-              Tab(icon: Icon(Icons.edit_notifications_rounded, size: 18), text: 'Custom'),
+              Tab(
+                icon: Icon(Icons.schedule_rounded, size: 18),
+                text: 'Upcoming',
+              ),
+              Tab(
+                icon: Icon(Icons.edit_notifications_rounded, size: 18),
+                text: 'Custom',
+              ),
               Tab(icon: Icon(Icons.science_outlined, size: 18), text: 'Test'),
             ],
           ),
@@ -479,8 +472,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                   value: prefs.startReminders,
                   onChanged: _busy || !prefs.taskReminders
                       ? null
-                      : (value) =>
-                            _save(prefs.copyWith(startReminders: value)),
+                      : (value) => _save(prefs.copyWith(startReminders: value)),
                 ),
                 ToggleRow(
                   label: 'Deadlines',
@@ -530,10 +522,22 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       items: const [
                         DropdownMenuItem(value: 0, child: Text('At start')),
                         DropdownMenuItem(value: 5, child: Text('5 min before')),
-                        DropdownMenuItem(value: 10, child: Text('10 min before')),
-                        DropdownMenuItem(value: 15, child: Text('15 min before')),
-                        DropdownMenuItem(value: 30, child: Text('30 min before')),
-                        DropdownMenuItem(value: 60, child: Text('1 hour before')),
+                        DropdownMenuItem(
+                          value: 10,
+                          child: Text('10 min before'),
+                        ),
+                        DropdownMenuItem(
+                          value: 15,
+                          child: Text('15 min before'),
+                        ),
+                        DropdownMenuItem(
+                          value: 30,
+                          child: Text('30 min before'),
+                        ),
+                        DropdownMenuItem(
+                          value: 60,
+                          child: Text('1 hour before'),
+                        ),
                       ],
                       onChanged: _busy || !prefs.taskReminders
                           ? null
@@ -556,7 +560,8 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                 _SectionTitle(
                   icon: Icons.nightlight_outlined,
                   title: 'Daily closing note',
-                  subtitle: 'One quiet nudge to review the day and set tomorrow.',
+                  subtitle:
+                      'One quiet nudge to review the day and set tomorrow.',
                 ),
                 const SizedBox(height: AppSpace.sm),
                 ToggleRow(
@@ -566,8 +571,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                   value: prefs.dailyReview,
                   onChanged: _busy
                       ? null
-                      : (value) =>
-                            _save(prefs.copyWith(dailyReview: value)),
+                      : (value) => _save(prefs.copyWith(dailyReview: value)),
                 ),
                 if (prefs.dailyReview)
                   Row(
@@ -580,9 +584,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                       ),
                       const Spacer(),
                       TextButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () => _pickReviewTime(prefs),
+                        onPressed: _busy ? null : () => _pickReviewTime(prefs),
                         icon: const Icon(Icons.schedule_rounded, size: 15),
                         label: Text(prefs.reviewLabel),
                       ),
@@ -1077,7 +1079,9 @@ class _StatusCard extends StatelessWidget {
                 if (status!.exactSupported)
                   _StatusChip(
                     icon: Icons.alarm_rounded,
-                    label: status!.exactAllowed ? 'Exact timing' : 'Inexact timing',
+                    label: status!.exactAllowed
+                        ? 'Exact timing'
+                        : 'Inexact timing',
                   ),
               ],
             ),
@@ -1094,7 +1098,10 @@ class _StatusCard extends StatelessWidget {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: busy ? null : onEnable,
-                  icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                  icon: const Icon(
+                    Icons.notifications_active_outlined,
+                    size: 18,
+                  ),
                   label: const Text('Turn on notifications'),
                 )
               else ...[
@@ -1336,9 +1343,15 @@ class _UpcomingRow extends StatelessWidget {
     return switch (kind) {
       NotificationKind.taskStart => (Icons.timer_outlined, 'Task start'),
       NotificationKind.taskDeadline => (Icons.flag_outlined, 'Deadline'),
-      NotificationKind.taskCustom => (Icons.edit_notifications_outlined, 'Task'),
+      NotificationKind.taskCustom => (
+        Icons.edit_notifications_outlined,
+        'Task',
+      ),
       NotificationKind.taskDaily => (Icons.repeat_rounded, 'Daily task'),
-      NotificationKind.dailyReview => (Icons.nightlight_outlined, 'Closing note'),
+      NotificationKind.dailyReview => (
+        Icons.nightlight_outlined,
+        'Closing note',
+      ),
       NotificationKind.custom => (Icons.notifications_none_rounded, 'Custom'),
       NotificationKind.test => (Icons.science_outlined, 'Test'),
     };

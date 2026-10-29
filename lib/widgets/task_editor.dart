@@ -194,7 +194,13 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
       final now = DateTime.now();
       setState(() {
         _reminderDaily = true;
-        _reminderAt = DateTime(now.year, now.month, now.day, at.hour, at.minute);
+        _reminderAt = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          at.hour,
+          at.minute,
+        );
       });
     } else if (!daily) {
       setState(() {
@@ -440,11 +446,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.edit_note_rounded,
-                    size: 18,
-                    color: colors.accent,
-                  ),
+                  Icon(Icons.edit_note_rounded, size: 18, color: colors.accent),
                   const SizedBox(width: AppSpace.sm),
                   Expanded(
                     child: Text(

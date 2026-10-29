@@ -300,15 +300,18 @@ void main() {
             ),
           ),
       ];
-      final planned = NotificationService.plan(views, offReview, at: now, limit: 5);
+      final planned = NotificationService.plan(
+        views,
+        offReview,
+        at: now,
+        limit: 5,
+      );
       expect(planned, hasLength(5));
       expect(
         planned.map((item) => item.when).toList(),
-        orderedEquals(
-          [
-            for (var i = 0; i < 5; i++) DateTime(2026, 10, 25, 9, i),
-          ],
-        ),
+        orderedEquals([
+          for (var i = 0; i < 5; i++) DateTime(2026, 10, 25, 9, i),
+        ]),
       );
     });
   });

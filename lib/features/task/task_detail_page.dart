@@ -896,8 +896,7 @@ class _NotesCard extends StatelessWidget {
               controller: controller,
               onChanged: onChanged,
               minLines: 10,
-              hintText:
-                  'Context, links, decisions, what “done” means. Markdown works here.',
+              hintText: 'Context, links, decisions, what “done” means. Markdown works here.',
             )
           else
             Container(

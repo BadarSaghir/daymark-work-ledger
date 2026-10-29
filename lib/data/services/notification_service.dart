@@ -110,13 +110,10 @@ class ReminderPreferences {
       dailyReview: raw['dailyReview'] as bool? ?? defaults.dailyReview,
       reviewHour: ((raw['reviewHour'] as num?)?.toInt() ?? 18).clamp(0, 23),
       reviewMinute: ((raw['reviewMinute'] as num?)?.toInt() ?? 30).clamp(0, 59),
-      startReminders:
-          raw['startReminders'] as bool? ?? legacyTasks,
-      deadlineReminders:
-          raw['deadlineReminders'] as bool? ?? legacyTasks,
+      startReminders: raw['startReminders'] as bool? ?? legacyTasks,
+      deadlineReminders: raw['deadlineReminders'] as bool? ?? legacyTasks,
       customReminders: raw['customReminders'] as bool? ?? legacyTasks,
-      dailyTaskReminders:
-          raw['dailyTaskReminders'] as bool? ?? legacyTasks,
+      dailyTaskReminders: raw['dailyTaskReminders'] as bool? ?? legacyTasks,
     );
   }
 }
@@ -154,11 +151,7 @@ class PlannedNotification {
   final bool repeatDaily;
   final String? taskId;
 
-  PlannedNotification copyWith({
-    int? id,
-    DateTime? when,
-    bool? repeatDaily,
-  }) {
+  PlannedNotification copyWith({int? id, DateTime? when, bool? repeatDaily}) {
     return PlannedNotification(
       id: id ?? this.id,
       kind: kind,
@@ -697,7 +690,12 @@ class NotificationService {
     final now = DateTime.now();
     if (!preferences.enabled) {
       await cancelManaged();
-      return _report(now, scheduled: 0, errors: const [], permissionDenied: false);
+      return _report(
+        now,
+        scheduled: 0,
+        errors: const [],
+        permissionDenied: false,
+      );
     }
     await initialize();
     if (!_initialized) {
@@ -722,8 +720,7 @@ class NotificationService {
     }
     _linuxFallbackCount = 0;
     final planned = plan(tasks, preferences, at: now, limit: _platformLimit);
-    final ordered = [...planned]
-      ..sort((a, b) => b.when.compareTo(a.when));
+    final ordered = [...planned]..sort((a, b) => b.when.compareTo(a.when));
 
     var scheduled = 0;
     final errors = <String>[];
@@ -926,7 +923,9 @@ class NotificationService {
     try {
       final decoded = jsonDecode(payload);
       if (decoded is Map && decoded['source'] == _payloadSource) {
-        return {for (final entry in decoded.entries) '${entry.key}': entry.value};
+        return {
+          for (final entry in decoded.entries) '${entry.key}': entry.value,
+        };
       }
     } catch (_) {
       // A notification from another plugin or an older version.
@@ -999,8 +998,8 @@ class NotificationService {
       final result = <ScheduledReminder>[];
       for (final request in pending) {
         final meta = _decodePayload(request.payload);
-        final kind = _kindFromName(meta?['kind']?.toString()) ??
-            NotificationKind.custom;
+        final kind =
+            _kindFromName(meta?['kind']?.toString()) ?? NotificationKind.custom;
         final repeat = meta?['repeat'] == 'daily';
         var when = DateTime.tryParse(meta?['when']?.toString() ?? '');
         if (repeat && when != null) {
@@ -1049,8 +1048,7 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin
             >();
         granted = await android?.areNotificationsEnabled() ?? false;
-        exactAllowed =
-            await android?.canScheduleExactNotifications() ?? false;
+        exactAllowed = await android?.canScheduleExactNotifications() ?? false;
         _exactAllowed = exactAllowed;
       } else if (Platform.isIOS) {
         final ios = _plugin
@@ -1087,7 +1085,8 @@ class NotificationService {
           'Scheduled by iOS. Keep permission on, and allow notifications in '
               'Focus modes if you want them while a Focus is active.',
         'macos' => 'Scheduled by macOS. Focus modes can hold notifications.',
-        'windows' => 'Scheduled by Windows. Keep Daymark installed and signed in.',
+        'windows' =>
+          'Scheduled by Windows. Keep Daymark installed and signed in.',
         _ =>
           'Linux has no background scheduler in the notification plugin. '
               'Daymark rings reminders while the app is open.',
@@ -1249,9 +1248,7 @@ class NotificationService {
       title: title?.trim().isNotEmpty == true
           ? title!.trim()
           : 'Scheduled test',
-      body: body?.trim().isNotEmpty == true
-          ? body!.trim()
-          : 'If this arrived at the expected time, scheduling works on this device.',
+      body: body?.trim().isNotEmpty == true ? body!.trim() : 'If this arrived at the expected time, scheduling works on this device.',
       when: when,
       repeatDaily: false,
     );
@@ -1277,7 +1274,9 @@ class NotificationService {
       ),
       kind: NotificationKind.custom,
       title: cleanTitle,
-      body: body.trim().isEmpty ? 'A reminder from your Daymark ledger.' : body.trim(),
+      body: body.trim().isEmpty
+          ? 'A reminder from your Daymark ledger.'
+          : body.trim(),
       when: at,
       repeatDaily: repeatDaily,
     );

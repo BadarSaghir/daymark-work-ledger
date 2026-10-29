@@ -55,11 +55,7 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
       () => ref.read(reminderControllerProvider.notifier).syncNow(),
     );
     if (report == null || !mounted) return;
-    showToast(
-      context,
-      report.summary,
-      duration: const Duration(seconds: 4),
-    );
+    showToast(context, report.summary, duration: const Duration(seconds: 4));
   }
 
   Future<void> _refreshPending() async {
@@ -102,8 +98,7 @@ class _RemindersCardState extends ConsumerState<RemindersCard> {
   Future<void> _save(ReminderPreferences next, {String? message}) async {
     await _run(
       'Updating reminders',
-      () =>
-          ref.read(reminderControllerProvider.notifier).savePreferences(next),
+      () => ref.read(reminderControllerProvider.notifier).savePreferences(next),
     );
     if (message != null && mounted) showToast(context, message);
   }

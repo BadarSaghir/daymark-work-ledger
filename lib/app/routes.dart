@@ -10,7 +10,6 @@ Future<void> openTaskDetail(BuildContext context, String taskId) {
 }
 
 Future<void> openNotifications(BuildContext context) {
-  return Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
-  );
+  return Navigator.of(context)
+      .push(MaterialPageRoute<void>(builder: (_) => const NotificationsPage()));
 }
